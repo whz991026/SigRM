@@ -1,0 +1,1039 @@
+---
+title: "<center> SIGMR Vignette </center>"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+abstract: |
+  The SIGMR package introduces an innovative statistical approach, employing a similarity-guided multi-resolution analysis for precise m6A modification site detection within DART-seq data. This specialized toolkit, consisting of three pivotal functions, empowers researchers to explore single-cell RNA methylation sites comprehensively. SIGMRtest delves deep into m6A modifications at the individual cell level. SIGMR_similarity_test facilitates control group selection based on test cell similarity, with customizable control cell numbers. Lastly, SIGMR_cluster_test is essential for clustering cells based on gene expression or read counts, seamlessly accommodating both test and control groups. This method relies on control cells with similar gene expression patterns for comparison, systematically evaluating test cell behavior. The SIGMR package enhances the accuracy of methylation site results derived from DART-seq data, offering researchers powerful tools. For inquiries, contact Haozhe.Wang17@student.xjtlu.edu.cn. The accompanying document provides an introduction to using the SIGMR package, including a quick start guide, performance comparisons with the original method, and evaluation of clustering or selecting similar expression cells as control cells. It also outlines using the KS test when site labels are unavailable.
+vignette: >
+  % \VignetteIndexEntry{SIGMR_vignette}
+  % \VignetteEngine{knitr::rmarkdown}
+  % \VignetteEncoding{UTF-8}
+  % \VignetteDepends{pROC} 
+  % \VignetteDepends{SC3} 
+  % \VignetteDepends{SingleCellExperiment} 
+  % \VignetteDepends{scater} 
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.height=4,
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+
+
+
+
+
+# Install the package
+
+At the beginning, we need to install the SIGMR package and some other packages required for this R Markdown file.
+
+## Install our package SIGMR
+```{r setup}
+# install.packages("devtools")
+# library("devtools")
+# install_github("whz991026/SIGMR")
+
+library(SIGMR)
+```
+
+
+
+## Install the library need for this r markdown file
+
+Load the other packages:
+
+* library(pROC)
+* library(SC3)
+* library(SingleCellExperiment)
+* library(scater)
+```{r, include=FALSE}
+
+
+
+
+# install.packages("pROC")
+library(pROC)
+ 
+# if (!require("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+
+# BiocManager::install("SC3")
+library(SC3)
+
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("SingleCellExperiment")
+library(SingleCellExperiment)
+
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("scater")
+library(scater)
+```
+
+# Quick start
+
+It demonstrates how to utilize the main function, SIGMRtest(), from the SIGMR package. The primary input for the SIGMRtest function is a matrix or data frame containing four sets of read counts, where rows represent genes, and columns represent single cells. These four sets of read counts are ordered as follows: methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group. This data can be obtained by calling the simulateData() function.
+
+The output of the SIGMRtest function is a list with a length of 7:
+
+* The first part consists of a data frame representing methylation proportions (with rows for genes and columns for single cells) in the test cells.
+* The second part comprises a mean methylation proportion vector (with rows for genes and columns for single cells) in the control cells.
+* The third part contains a data frame displaying log2 risk ratios for the test cells.
+* The fourth part includes a data frame illustrating log2 odds ratios for the test cells.
+* The fifth part encompasses a data frame containing p-values for the test cells.
+* The sixth part represents estimated gene abundances.
+* The seventh part is a data frame of adjusted p-values for the test cells. 
+
+
+```{r}
+set.seed(1)
+# first simulate the data
+data <- simulateData(test_num = 10,control_num = 30)
+# put into the main function SIGMRtest
+res <- SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
+
+# meth proportion data frame (row is gene and column is single cell) in the test cells. 
+head(res[[1]])
+
+# mean meth proportion vector (row is gene and column is single cell) in the control cells.
+head(res[[2]])
+
+# log2 risk ratio data frame for the test cells. 
+head(res[[3]])
+
+# log2 odds ratio data frame for the test cells. 
+head(res[[4]])
+
+# p value data frame for the test cells. 
+head(res[[5]])
+
+# estimated gene abundance
+head(res[[6]])
+
+# adjusted p value data frame for the test cells
+head(res[[7]])
+```
+
+
+# Simulation Part
+
+This section involves simulating data and evaluating the performance of the SIGMR model compared to the original method. It also includes testing the performance of the SIGMR_cluster_test() or SIGMR_similarity_test() and SIGMRtest() functions to determine whether selecting control cells based on the similarity of their expression profiles yields superior results.
+
+For the simulation data:
+
+* There are 2000 sites.
+* The dataset comprises 100 control cells and 300 test cells.
+* The logarithm of $q_{ij}$ follows a uniform distribution.
+* The detection level $p_{ij}$ also follows a uniform distribution.
+* For 50% of the background sites, the detection levels follow a $U(0, 0.2)$ distribution, while the corresponding test data follow a $U(0.25, 0.3)$ distribution. This indicates that the correct treatment significantly outperforms the control group for these sites, which are the modification sites. To introduce more diversity in the average detection levels of the background sites, I assigned different ranges within this distribution to different groups of sites, such as $U(0, 0.01)$, $U(0.01, 0.02)$, ..., and $U(0.19, 0.2)$.
+* For the remaining sites, their detection levels are similar, following a $U(0, 0.3)$ distribution. To ensure similarity, I assigned different ranges within this distribution to different groups of sites, such as $U(0, 0.01)$, $U(0.01, 0.02)$, ..., and $U(0.29, 0.3)$.
+
+By the way, the simulateData() function is responsible for generating the dataset, as before, and provides an output list containing methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group.
+
+
+## Function for the simulation part
+### Function in the ScDART paper written by Tegowski et al. 
+The details can be found at https://www.cell.com/molecular-cell/pdf/S1097-2765(21)01143-6.pdf. In the paper, two platforms are discussed: the droplet-based 10x Genomics and the plate-based SMART-seq2 platforms. These platforms employ slightly different methods for detecting m6A modifications. Subsequently, we have developed two functions for these two methods, namely, single_test_10x and single_test_SMART.
+
+The single_test_10x() function takes the following inputs: methylation read counts of the control data, methylation read counts of the test data, unmethylation read counts of the control data, and unmethylation read counts of the test data. This method is tailored for 10x Genomics sample preparation and involves the following criteria:
+
+* The test data should have a minimum coverage of 3 reads.
+* The detection level of the test data (t/T) should be greater than or equal to 10%.
+* The detection level of the test data should be at least 1.5-fold higher than that of the control data.
+
+
+Conversely, the single_test_SMART() function, designed for SMART-seq2 sample preparation and sequencing, takes similar inputs: methylation read counts of the control data, methylation read counts of the test data, unmethylation read counts of the control data, and unmethylation read counts of the test data. This method applies the following criteria:
+
+* The test data should have a minimum coverage of 20 reads.
+* The detection level of the test data (t/T) should be greater than or equal to 10%.
+* The detection level of the test data should be at least 1.5-fold higher than that of the control data.
+* The detected read counts should be greater than or equal to 2.
+
+
+
+```{r,include=FALSE}
+
+
+
+single_test_10x <- function(meth1,meth2,unmeth1,unmeth2){
+  
+  # combine as the total reads
+  data1 <- meth1+unmeth1
+  data2 <- meth2+unmeth2
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- apply((meth1/data1) , 1, mean_na<- function(x) {mean(x,na.rm=TRUE)})
+  var_control <- apply((meth1/data1) , 1, var_na<- function(x){var(x,na.rm=TRUE)})
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth2)[2])==0){
+     # first condition
+      index_1 <- which(data2>=3)
+      
+      # second condition
+      p_test <- meth2/data2
+      index_2 <- which(p_test>=0.1)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index <- index_3 [index_3 %in% index_2]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth2)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=3)
+      
+      # second condition
+      p_test <- meth2[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index[[i]] <- index_3[index_3 %in% index_2]
+    }
+    
+  }
+    
+    
+      return(index)
+  
+}
+    
+
+
+single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
+  
+  # combine as the total reads
+  data1 <- meth1+unmeth1
+  data2 <- meth2+unmeth2
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- apply((meth1/data1) , 1, mean_na<- function(x) {mean(x,na.rm=TRUE)})
+  var_control <- apply((meth1/data1) , 1, var_na<- function(x){var(x,na.rm=TRUE)})
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth2)[2])==0){
+     # first condition
+      index_1 <- which(data2>=10)
+      
+      # second condition
+      p_test <- meth2/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth1>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth2)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=3)
+      
+      # second condition
+      p_test <- meth2[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth1>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+```
+
+
+### FDR function
+
+FDR_function(): This function calculates the FDR (false discovery rate).
+```{r,include=FALSE}
+FDR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
+  if(adjust==TRUE){
+     res <- p.adjust(res,method = "BH",n=length(res))
+  }
+ 
+  len_1 <- length(which((res[((round(n_Sites*per_me)+1):n_Sites)]<=threshold)))
+  len <- length(which(res<=threshold))
+  res <- len_1/(len)
+  return(res)
+}
+```
+
+### TDR function
+
+TDR_function(): This function calculates the TDR (true discovery rate).
+```{r,include=FALSE}
+TDR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
+  if(adjust==TRUE){
+     res <- p.adjust(res,method = "BH",n=length(res))
+  }
+ 
+  len_1 <- length(which((res[(1:(round(n_Sites*per_me)))]<=threshold)))
+  len <- (round(n_Sites*per_me))
+  res <- len_1/(len)
+  return(res)
+}
+```
+
+
+### Ratio plot function
+
+ratio_plot(): This function is used to create ratio plots for risk ratio or odds ratio calculations.
+```{r,results=FALSE, include=FALSE,echo=FALSE}
+ratio_plot <- function(x,idx){
+  y_index <-c()
+  y_index2 <-c()
+  q_index <-c()
+  q_index2 <-c()
+  
+  y_index_true <-c()
+  y_index_true2 <-c()
+  q_index_true <-c()
+  q_index_true2 <-c()
+  if (dim(x[[7]])[2]<=1){
+   num= dim(x[[7]])[2]
+  }else{
+   num= 2
+  }
+  for( i in 1:num){
+    index <- which(x[[7]][,i]<=0.05)
+    y_index_ <- x[[idx]][index,i]
+    y_index <-c(y_index,y_index_)
+    y_index_2 <- x[[idx]][-index,i]
+    y_index2 <-c(y_index2,y_index_2)
+    
+    if(length(dim(x[[6]]))==0){
+      q_index_ <- x[[6]][index]
+      q_index <-c(q_index,q_index_)
+      q_index_2 <- x[[6]][-index]
+      q_index2 <-c(q_index2,q_index_2)
+    }else{
+      q_index_ <- x[[6]][index,i]
+      q_index <-c(q_index,q_index_)
+      q_index_2 <- x[[6]][-index,i]
+      q_index2 <-c(q_index2,q_index_2)
+    }
+    
+    
+    
+    index_true <- 1:round(length(x[[7]][,i])/2)
+    y_index_true_ <- x[[idx]][index_true,i]
+    y_index_true <-c(y_index_true,y_index_true_)
+    y_index_true_2 <- x[[idx]][-index_true,i]
+    y_index_true2 <-c(y_index_true2,y_index_true_2)
+    if(length(dim(x[[6]]))==0){
+    q_index_true_ <- x[[6]][index_true]
+    q_index_true <-c(q_index_true,q_index_true_)
+    q_index_true_2 <- x[[6]][-index_true]
+    q_index_true2 <-c(q_index_true2,q_index_true_2)
+    }else{
+      q_index_true_ <- x[[6]][index_true,i]
+      q_index_true <-c(q_index_true,q_index_true_)
+      q_index_true_2 <- x[[6]][-index_true,i]
+      q_index_true2 <-c(q_index_true2,q_index_true_2)
+    }
+  }
+  y <- c(y_index,y_index2)
+  q <- c(q_index,q_index2)
+  x <- c(rep("T",length(y_index)),rep("F",length(y_index2)))
+  data <- data.frame(y,x,q)
+  
+  y_true <- c(y_index_true,y_index_true2)
+  q_true <- c(q_index_true,q_index_true2)
+  x_true <- c(rep("T",length(y_index_true)),rep("F",length(y_index_true2)))
+  data_true <- data.frame(y_true,x_true,q_true)
+ 
+  
+  if (idx==3){
+    plot_true <- ggplot(data_true)+geom_point(aes(q_true,y_true,color=x_true))+
+    scale_color_manual(values=c("black","#FF4500"))+
+       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("risk ratio")+
+       ggtitle("Plot of True label risk ratio from simulation")+xlab("expression")+
+      theme(plot.title = element_text(hjust = 0.5)) 
+    
+    plot_test <-  ggplot(data)+geom_point(aes(q,y,color=x))+
+    scale_color_manual(values=c("black","#FF4500"))+
+       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("risk ratio")+
+      ggtitle("Plot of SIGMR result of risk ratio for simulation")+xlab("expression")+
+      theme(plot.title = element_text(hjust = 0.5)) 
+  }else{
+    plot_true <-  ggplot(data_true)+geom_point(aes(q_true,y_true,color=x_true))+
+    scale_color_manual(values=c("black","#FF4500"))+
+       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("odds ratio")+
+       ggtitle("Plot of True label odds ratio from simulation")+xlab("expression")+
+      theme(plot.title = element_text(hjust = 0.5)) 
+    
+    plot_test <- ggplot(data)+geom_point(aes(q,y,color=x))+
+    scale_color_manual(values=c("black","#FF4500"))+
+       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("odds ratio")+
+       ggtitle("Plot of SIGMR result of odds ratio for simulation")+xlab("expression")+
+      theme(plot.title = element_text(hjust = 0.5)) 
+  }
+
+
+  plot_list <- list()
+  plot_list[[1]] <- plot_true
+  plot_list[[2]] <- plot_test
+    
+  return (plot_list)
+}
+```
+
+
+
+### test_function()
+In the following, test_function() is the function used to simulate data and obtain results from the SIGMR, 10x, and SMART models. Since the 10x and SMART methods can only determine whether sites are m6A or not, whereas the SIGMR provides p-values, we establish a threshold to ensure that the number of m6A sites detected by SIGMR matches that of 10x or SMART for a fair comparison. We then evaluate and compare the performance based on AUC, FDR, and TDR. The output of test_function() is a list with seven components:
+
+* AUC results for each method.
+* FDR results for each method.
+* TDR results for each method.
+* Simulated data.
+* Results obtained from SIGMR.
+* Results from the 10x method.
+* Results from the SMART method."
+
+
+
+
+```{r,include=FALSE}
+test_function <- function(n_Sites = 1000, test_num = 200, control_num = 300, 
+     min_expression = 1, max_expression = 4,dif_express =0.8, per_me = 1/2, 
+     dif_me = 1/4, lib_s = 1/5, d =1,prange1=c(0,0.45),p_s_1=0.05,prange2=c(0.4,0.8),
+     prange3=c(0,0.4),p_s_3=0.1,remove.false = TRUE){
+#n_Sites = 1000;test_num = 70; control_num = 300; min_expression = 1; max_expression = 4;
+#  dif_express = 1/2; per_me = 0.5 ;dif_me = 1/4;lib_s = 1/5; d =  0.1;prange1=c(0,0.2);p_s_1=0.01;prange2=c(0.25,0.3);prange3=c(0,0.3);p_s_3=0.01;
+#  remove.false = TRUE
+options (warn = - 1)
+# simulate data
+data <- simulateData(n_Sites = n_Sites,test_num = test_num,control_num = control_num,
+          min_expression=min_expression,max_expression=max_expression,per_me=per_me,
+          prange1=prange1,p_s_1=p_s_1,prange2=prange2,prange3=prange3,p_s_3=p_s_3)
+
+# test
+res1 = SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
+res2 = single_test_10x(data[[1]],data[[2]],data[[3]],data[[4]])
+res3 = single_test_SMART(data[[1]],data[[2]],data[[3]],data[[4]])
+# set parameter
+p <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
+p_ <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
+p2 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
+auc_SIGMR_10x <- numeric(dim(data[[2]])[2])
+auc_SIGMR_SMART <- numeric(dim(data[[2]])[2])
+auc_single_10x <- numeric(dim(data[[2]])[2])
+auc_single_SMART <- numeric(dim(data[[2]])[2])
+fdr_SIGMR_10x <- numeric(dim(data[[2]])[2])
+fdr_SIGMR_SMART <- numeric(dim(data[[2]])[2])
+fdr_single_10x <- numeric(dim(data[[2]])[2])
+fdr_single_SMART <- numeric(dim(data[[2]])[2])
+tdr_SIGMR_10x <- numeric(dim(data[[2]])[2])
+tdr_SIGMR_SMART <- numeric(dim(data[[2]])[2])
+tdr_single_10x <- numeric(dim(data[[2]])[2])
+tdr_single_SMART <- numeric(dim(data[[2]])[2])
+label=c(rep(0,round(n_Sites*(per_me))),rep(1,round(n_Sites*(1-per_me))))
+
+# calculate auc, fdr, tdr
+for (i in 1 : length(res2)){
+  
+  # AUC
+  l1 <- length(res2[[i]])
+  p[res2[[i]],i]<-0
+  p[-res2[[i]],i]<-1
+  auc_single_10x[i] <- auc(roc(label,p[,i]))
+  
+  l2 <- length(res3[[i]])
+  p_[res3[[i]],i]<-0
+  p_[-res3[[i]],i]<-1
+  auc_single_SMART[i] <- auc(roc(label,p_[,i]))
+  
+  threshold1 <- p.adjust(res1[[5]][,i],method = "BH")[order(p.adjust(res1[[5]][,i],
+                                                            method = "BH"))][l1]
+  threshold2 <-  p.adjust(res1[[5]][,i],method = "BH")[order(p.adjust(res1[[5]][,i],
+                                                            method = "BH"))][l2]
+  
+
+  p2[,i] <-rep(1,length(res1[[5]][,i])) 
+  p2[which(p.adjust(res1[[5]][,i] ,method = "BH")<=threshold1) ,i] <-0 
+  auc_SIGMR_10x[i] <- auc(roc(label,p2[,i]))
+  fdr_SIGMR_10x[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  tdr_SIGMR_10x[i]<-TDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  
+  p2[,i] <-rep(1,length(res1[[5]][,i])) 
+  p2[which(p.adjust(res1[[5]][,i] ,method = "BH")<=threshold2) ,i] <-0 
+  auc_SIGMR_SMART[i] <- auc(roc(label,p2[,i]))
+  fdr_SIGMR_SMART[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  tdr_SIGMR_SMART[i]<-TDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  #FDR
+
+  
+  
+  fdr_single_10x[i] <-FDR_function(per_me,n_Sites,p[,i],threshold=threshold1)
+  fdr_single_SMART[i] <-FDR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
+  
+  #TDR
+  
+  
+  tdr_single_10x[i] <-TDR_function(per_me,n_Sites,p[,i],threshold=threshold1)
+  tdr_single_SMART[i] <-TDR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
+}
+
+# set table
+auc_table <- cbind(c(auc_SIGMR_10x,auc_SIGMR_SMART,auc_single_10x,auc_single_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+
+fdr_table <- cbind(c(fdr_SIGMR_10x,fdr_SIGMR_SMART,fdr_single_10x,fdr_single_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+
+tdr_table <- cbind(c(tdr_SIGMR_10x,tdr_SIGMR_SMART,tdr_single_10x,tdr_single_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+
+# return list
+list_return <- list()
+  list_return[[1]]=auc_table
+  list_return[[2]]=fdr_table
+  list_return[[3]]=tdr_table
+  list_return[[4]]=data
+  list_return[[5]]=res1
+  list_return[[6]]=res2
+  list_return[[7]]=res3
+
+return(list_return)
+
+}
+
+```
+
+
+
+
+## Compare origion methods
+
+This section involves comparing the performance of the SIGMR model with the original method by invoking the test_function().
+```{r,include=FALSE}
+set.seed(1)
+
+n_Sites <- 2000
+per_me  <-0.5
+test_num = 100
+control_num = 300
+
+metric <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = 1, max_expression = 4, per_me =  per_me ,prange1=c(0,0.2),p_s_1=0.01,prange2=c(0.25,0.3),prange3=c(0,0.3),p_s_3=0.01,
+      remove.false = TRUE)
+
+AUC_metric <- metric[[1]]
+colnames(AUC_metric) <- c("AUC","method")
+AUC_metric <- as.data.frame(AUC_metric)
+AUC_metric $AUC <-as.numeric(AUC_metric $AUC)
+
+FDR_metric <- metric[[2]]
+colnames(FDR_metric) <- c("FDR","method")
+FDR_metric <- as.data.frame(FDR_metric)
+FDR_metric $FDR <-as.numeric(FDR_metric $FDR)
+
+TDR_metric <- metric[[3]]
+colnames(TDR_metric) <- c("TDR","method")
+TDR_metric <- as.data.frame(TDR_metric)
+TDR_metric $TDR <-as.numeric(TDR_metric$TDR)
+
+
+```
+
+
+### Visualization the results
+Visualizing the results of the comparison of performance: AUC, FDR, and TDR.
+
+The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SIGMR output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SIGMR and these methods.
+
+* In the AUC plot, it is evident that the AUC of SIGMR_10x surpasses that of 10x, and the AUC of SIGMR_SMART outperforms SMART.
+* Regarding the FDR plot, it's clear that the FDR of SIGMR_10x is lower than that of 10x, and the FDR of SIGMR_SMART is lower than SMART.
+* In the TDR plot, we observe that the TDR of SIGMR_10x is superior to that of 10x, and the TDR of SIGMR_SMART excels compared to SMART.
+* For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SIGMR results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SIGMR does not detect any sites with a log odds ratio or log risk ratio below 0.
+```{r,results='hold',echo=FALSE}
+
+ggplot(AUC_metric , aes( y=AUC,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of AUC") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+
+ggplot(FDR_metric, aes( y=FDR,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of FDR")+
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+
+ggplot(TDR_metric , aes( y=TDR,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of TDR")+
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+res = metric[[5]]
+
+ratio_plot(res,3)[[1]]
+
+ratio_plot(res,3)[[2]]
+
+ratio_plot(res,4)[[1]]
+
+ratio_plot(res,4)[[2]]
+
+```
+
+## Cluster 
+We aim to apply a clustering method in which cells with similar gene expression are grouped together. For the test cells, this method not only employs all control cells but also selects control cells with similar gene expression as the control group. We utilize the SC3 clustering method, and you can find detailed information in the article by Kiselev et al. <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5410170/>.
+
+
+### SIGMR_cluster_test function
+Before comparing the performance of SIGMR_cluster_test() and SIGMRtest(), let's explore how to use the SIGMR_cluster_test() function. The primary input for the SIGMR_cluster_test function is the same as for the SIGMRtest function: a four read counts matrix or data frame where rows represent genes and columns represent single cells. Additionally, it requires a factor variable named 'cluster variable,' indicating that you must cluster the cells before calling the SIGMR_cluster_test function. For details on other parameters, please refer to the help page.
+
+The outputs of the SIGMR_cluster_test function also consist of a list with a length of 7. The key differences between the outputs of the SIGMR_cluster_test function and the SIGMRtest function are found in elements 2 and 6 of the list:
+
+* The second part contains the mean methylation proportion data frame of the control group.
+* The sixth part includes the estimated abundance data frame.
+
+
+It's important to note that the mean methylation proportion of the control group and the estimated abundance can vary with different clusters, which is why they are represented as data frames rather than vectors.
+
+### cluster by SC3
+```{r, include=FALSE}
+set.seed(1)
+data <- simulateData(test_num = 10,control_num = 30)
+
+# cluster the cells
+data1 <- data[[1]]+data[[3]]
+data2 <- data[[2]]+data[[4]]
+
+l <-dim(data1)[2]
+
+
+data_ <- cbind(data1,data2)
+colnames(data_)<- paste0("cell",c(1:dim(data_)[2]))
+rownames(data_)<- paste0("gene",c(1:dim(data_)[1]))
+##  sc3 cluster
+
+data_sc3 <- apply(data_,2,function(x){x/sum(x)*10000})
+sce <- SingleCellExperiment::SingleCellExperiment(
+  assays = list(
+    counts = as.matrix(data_sc3),
+    logcounts = log2(as.matrix(data_sc3) + 1)
+  )
+)
+# cluster
+rowData(sce)$feature_symbol <- rownames(sce)
+sce <- scater::runPCA(sce)
+
+sce <- sc3(sce, ks= 3,gene_filter = FALSE,n_cores=2)
+
+cluster <- sce$sc3_3_clusters
+
+
+
+
+```
+
+
+
+### call the SIGMR_cluster_test() function
+```{r}
+res <- SIGMR_cluster_test(data[[1]],data[[2]],data[[3]],data[[4]],cluster = cluster)
+
+# meth proportion data frame (row is gene and column is single cell) in the test cells. 
+head(res[[1]])
+
+# mean meth proportion vector (row is gene and column is single cell) in the control cells.
+head(res[[2]])
+
+# log2 risk ratio data frame for the test cells. 
+head(res[[3]])
+
+# log2 odds ratio data frame for the test cells. 
+head(res[[4]])
+
+# p value data frame for the test cells. 
+head(res[[5]])
+
+# estimated gene abundance
+head(res[[6]])
+
+# adjusted p value data frame for the test cells
+head(res[[7]])
+```
+
+
+
+
+
+
+## similarity
+The cluster method may result in clusters that do not contain any control cells, leaving the test cells without a control group. In such cases, we can employ control cells with the most similar gene expression.
+
+### SIGMR_similarity_test function
+
+Before we compare the performance of SIGMR_similarity_test() and SIGMRtest(), let's take a look at how to use the SIGMR_similarity_test() function. The primary input for the SIGMR_similarity_test() function is the same as that for the SIGMRtest function: a four read counts matrix or data frame where rows represent genes and columns represent single cells. The 'methods' parameter is set to the default "Pearson," but it can also be customized from the vector c("Euclidean distance," "Manhattan distance," "Maximum distance," "Pearson," "Spearman"). As for the 'num_test' parameter, it is set to 1 by default. We recommend altering the 'num_test' parameter only if the test cells have replicates. The 'num_cluster' parameter determines how many similar cells are selected from the control cells to form the control group.
+
+Regarding the outputs, they are identical to those of the SIGMR_cluster_test function.
+
+These revisions should make the text clearer and more grammatically sound.
+
+```{r}
+
+set.seed(1)
+data <- simulateData(test_num = 10,control_num = 30)
+res = SIGMR_similarity_test(data[[1]],data[[2]],data[[3]],data[[4]],
+            method="Pearson",num_test=1,num_control=10)
+
+
+# meth proportion data frame (row is gene and column is single cell) in the test cells. 
+head(res[[1]])
+
+# mean meth proportion vector (row is gene and column is single cell) in the control cells.
+head(res[[2]])
+
+# log2 risk ratio data frame for the test cells. 
+head(res[[3]])
+
+# log2 odds ratio data frame for the test cells. 
+head(res[[4]])
+
+# p value data frame for the test cells. 
+head(res[[5]])
+
+# estimated gene abundance
+head(res[[6]])
+
+# adjusted p value data frame for the test cells
+head(res[[7]])
+
+```
+
+
+
+
+
+
+
+## Compare the performance of the cluster similarity and the origion SIGMR method
+* For the clustering, I utilized the SC3 clustering method with three clusters.
+
+* For similarity measurement, I opted for the Pearson correlation coefficient to assess similarity and selected the top 100 most similar control cells for each test cell.
+```{r, include=FALSE}
+# SIGMR_cluster_test
+
+options (warn = - 1)
+data <- metric[[4]]
+data1 <- data[[1]]+data[[3]]
+data2 <- data[[2]]+data[[4]]
+
+l <-dim(data1)[2]
+
+
+data <- cbind(data1,data2)
+colnames(data)<- paste0("cell",c(1:dim(data)[2]))
+rownames(data)<- paste0("gene",c(1:dim(data)[1]))
+##  sc3 cluster
+
+data_sc3 <- apply(data,2,function(x){x/sum(x)*10000})
+sce <- SingleCellExperiment::SingleCellExperiment(
+  assays = list(
+    counts = as.matrix(data_sc3),
+    logcounts = log2(as.matrix(data_sc3) + 1)
+  )
+)
+# cluster
+rowData(sce)$feature_symbol <- rownames(sce)
+sce <- scater::runPCA(sce)
+
+sce <- sc3(sce, ks= 3,gene_filter = FALSE,n_cores = 2)
+
+cluster <- sce$sc3_3_clusters
+
+# test
+data <- metric[[4]]
+res_cluster = SIGMR_cluster_test(data[[1]],data[[2]],data[[3]],data[[4]],cluster= cluster)
+
+res = metric[[5]]
+
+# AUC
+label=c(rep(0,round(dim(data[[1]])[1]*(0.5))),rep(1,round(dim(data[[1]])[1]*(1-0.5))))
+p1 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
+p2 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
+auc_SIGMR_cluster <- numeric(dim(data[[2]])[2])
+auc_SIGMR <- numeric(dim(data[[2]])[2])
+
+# FDR
+fdr_SIGMR_cluster <- numeric(dim(data[[2]])[2])
+fdr_SIGMR <- numeric(dim(data[[2]])[2])
+
+# TDR
+tdr_SIGMR_cluster <- numeric(dim(data[[2]])[2])
+tdr_SIGMR <- numeric(dim(data[[2]])[2])
+
+
+for (i in 1 : dim(data[[2]])[2]){
+  
+    threshold1 <- p.adjust(res[[5]][,i],method = "BH")[order(p.adjust(res[[5]][,i],
+                                          method = "BH"))][round(n_Sites/2)]
+  threshold2 <- p.adjust(res_cluster[[5]][,i],method = "BH")[order(p.adjust(
+    res_cluster[[5]][,i],method = "BH"))][round(n_Sites/2)]
+  
+    p1[,i] <-rep(1,length(res[[5]][,i])) 
+    p1[which(p.adjust(res[[5]][,i] ,method = "BH")<=threshold1) ,i] <-0 
+    
+    p2[,i] <-rep(1,length(res[[5]][,i])) 
+    p2[which(p.adjust(res_cluster[[5]][,i] ,method = "BH")<=threshold2) ,i] <-0 
+    
+    # AUC
+    auc_SIGMR[i] <- auc(roc(label,p1[,i]))
+    auc_SIGMR_cluster[i] <- auc(roc(label,p2[,i]))
+    
+    # FDR
+    fdr_SIGMR_cluster[i] <- FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+    fdr_SIGMR[i] <- FDR_function(per_me,n_Sites,p1[,i],threshold=threshold1)
+    
+    # TDR
+    tdr_SIGMR_cluster[i] <- TDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+    tdr_SIGMR[i] <- TDR_function(per_me,n_Sites,p1[,i],threshold=threshold1)
+}
+
+auc_table <- cbind(c(auc_SIGMR_cluster,auc_SIGMR),c(rep("SIGMR_cluster",
+                    dim(data[[2]])[2]),rep("SIGMR",dim(data[[2]])[2])))
+
+colnames(auc_table) <- c("AUC","method")
+auc_table <- as.data.frame(auc_table)
+auc_table $AUC <-as.numeric(auc_table $AUC)
+
+
+
+fdr_table <- cbind(c(fdr_SIGMR_cluster,fdr_SIGMR),c(rep("SIGMR_cluster",
+                   dim(data[[2]])[2]),rep("SIGMR",dim(data[[2]])[2])))
+
+colnames(fdr_table) <- c("FDR","method")
+fdr_table <- as.data.frame(fdr_table)
+fdr_table $FDR <-as.numeric(fdr_table $FDR)
+
+
+
+tdr_table <- cbind(c(tdr_SIGMR_cluster,tdr_SIGMR),c(rep("SIGMR_cluster",
+                    dim(data[[2]])[2]),rep("SIGMR",dim(data[[2]])[2])))
+
+colnames(tdr_table) <- c("TDR","method")
+tdr_table <- as.data.frame(tdr_table)
+tdr_table $TDR <-as.numeric(tdr_table $TDR)
+
+
+
+# SIGMR_similarity_test
+
+
+data <- metric[[4]]
+res_similarity = SIGMR_similarity_test(data[[1]],data[[2]],data[[3]],data[[4]],
+          method="Pearson",num_test=1,num_control=100)
+
+# AUC
+label=c(rep(0,round(dim(data[[1]])[1]*(0.5))),rep(1,round(dim(data[[1]])[1]*(1-0.5))))
+p3 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
+auc_SIGMR_similarity <- numeric(dim(data[[2]])[2])
+fdr_SIGMR_similarity <- numeric(dim(data[[2]])[2])
+tdr_SIGMR_similarity <- numeric(dim(data[[2]])[2])
+
+
+for (i in 1 : dim(data[[2]])[2]){
+  
+  threshold3 <-  p.adjust(res_similarity[[5]][,i],method = "BH")[order(
+    p.adjust(res_similarity[[5]][,i],method = "BH"))][round(n_Sites/2)]
+  
+
+  p3[,i] <-rep(1,length(res_similarity[[5]][,i])) 
+  p3[which(p.adjust(res_similarity[[5]][,i] ,method = "BH")<=threshold3) ,i] <-0 
+  
+  
+  auc_SIGMR_similarity[i] <- auc(roc(label,p3[,i]))
+  fdr_SIGMR_similarity[i] <- FDR_function(per_me,n_Sites,p3[,i],threshold=threshold3)
+  tdr_SIGMR_similarity[i] <- TDR_function(per_me,n_Sites,p3[,i],threshold=threshold3)
+}
+auc_table_ <-cbind(auc_SIGMR_similarity,rep("SIGMR_similarity",dim(data[[2]])[2]))
+colnames(auc_table_) <- c("AUC","method")
+auc_table <- rbind(auc_table,auc_table_)
+
+colnames(auc_table) <- c("AUC","method")
+auc_table <- as.data.frame(auc_table)
+auc_table $AUC <-as.numeric(auc_table $AUC)
+
+fdr_table_ <-cbind(fdr_SIGMR_similarity,rep("SIGMR_similarity",dim(data[[2]])[2]))
+colnames(fdr_table_) <- c("FDR","method")
+fdr_table <- rbind(fdr_table,fdr_table_)
+
+colnames(fdr_table) <- c("FDR","method")
+fdr_table <- as.data.frame(fdr_table)
+fdr_table $FDR <-as.numeric(fdr_table $FDR)
+
+tdr_table_ <-cbind(tdr_SIGMR_similarity,rep("SIGMR_similarity",dim(data[[2]])[2]))
+colnames(tdr_table_) <- c("TDR","method")
+tdr_table <- rbind(tdr_table,tdr_table_)
+
+colnames(tdr_table) <- c("TDR","method")
+tdr_table <- as.data.frame(tdr_table)
+tdr_table $TDR <-as.numeric(tdr_table $TDR)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+### Visualization the results
+
+To determine whether SIGMR_cluster_test() and SIGMR_similarity_test() improve the performance of SIGMRtest(), we set the p-value threshold to detect half of the sites as m6A, in accordance with the simulation where 50% of the sites are m6A.
+
+* In the AUC plot, it is evident that SIGMR_cluster_test() and SIGMR_similarity_test() outperform the original SIGMRtest() function.
+
+* The FDR plot also demonstrates that clustering and similarity decrease the FDR.
+
+* Similarly, the TDR plot shows that clustering and similarity increase the TDR.
+```{r,echo=FALSE,results="hold"}
+
+ggplot(auc_table , aes( y=AUC,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of AUC") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+ggplot(fdr_table , aes( y=FDR,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of FDR") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+ggplot(tdr_table , aes( y=TDR,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of TDR") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+
+## KS test
+Since we lack the labels indicating whether the sites in real data are m6A-modified or not, we have devised a workflow using the ks.test to compare the performance of different methods. The fundamental concept involves selecting some control cells and treating them as test cells. In these "pseudo-test cells," the methods should ideally detect either zero sites or very few. By comparing the distributions learned from real test cells and control cells, we can gauge the dissimilarities between them. A greater difference in the distributions of a model indicates a higher likelihood of the model yielding better results. We employ the ks test to quantify the disparity between the distributions.
+
+In the simulation data, we designate the top 50% of the data as m6A sites. We then proceed to compare the distribution of data from the top 30% to 65% of sites against the distribution of data from the top 65% to 100% of sites.
+
+```{r,echo=FALSE,results=FALSE, include=FALSE}
+
+res1 <- metric[[5]]
+res2 <- metric[[6]]
+res3 <- metric[[7]]
+res1_ <- list()
+res2_ <- list()
+res3_ <- list()
+res_cluster_ <- list()
+res_similarity_ <- list()
+res1_ks <- c()
+res2_ks <- c()
+res3_ks <- c()
+res_cluster_ks <- c()
+res_similarity_ks <- c()
+
+
+
+for (i in 1:length(res2)){
+  
+  
+  # res2 res3
+  
+  res2_[[i]] <- rep(0,n_Sites)
+  res2_[[i]][res2[[i]]] <- 1
+  
+  
+
+  res3_[[i]] <- rep(0,n_Sites)
+  res3_[[i]][res3[[i]]] <- 1
+  
+  
+ 
+   
+    res1_ks[i] <- ks.test(res1[[7]][(round(0.3*n_Sites)+1):round(0.65*n_Sites),i],
+                          res1[[7]][(round(0.65*n_Sites)+1):n_Sites,i])$statistic
+     
+    res2_ks[i] <- ks.test(res2_[[i]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
+                          res2_[[i]][(round(0.65*n_Sites)+1):n_Sites])$statistic
+
+  
+  
+    res3_ks[i] <- ks.test(res3_[[i]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
+                          res3_[[i]][(round(0.65*n_Sites)+1):n_Sites])$statistic
+ 
+    
+    
+    res_cluster_ks[i] <- ks.test(res_cluster[[5]][(round(0.3*n_Sites)+1):round(
+      0.65*n_Sites),i],res_cluster[[5]][(round(0.65*n_Sites)+1):n_Sites,i])$statistic
+    
+    
+    
+    res_similarity_ks[i] <- ks.test(res_similarity[[7]][(round(0.3*n_Sites)+1):
+                                                          round(0.65*n_Sites),i],res_similarity[[7]][(round(0.65*n_Sites)+1):n_Sites,i])$statistic
+    
+}
+
+kstest_data <- cbind(c(res1_ks,res2_ks,res3_ks,res_cluster_ks,res_similarity_ks),
+                     c(rep("SIGMR",length(res2)),rep("10X",length(res2)),
+                       rep("SMART",length(res2)),rep("SIGMR_cluster",length(res2)),
+                       rep("SIGMR_similarity",length(res2))))
+kstest_data  <- data.frame(kstest_data )
+colnames(kstest_data ) <- c("ks","method")
+kstest_data$ks <- as.numeric(kstest_data$ks)
+```
+
+
+
+## Visualization the results
+We can observe that the KS D statistics for SIGMRtest(), SIGMR_cluster_test(), and SIGMR_similarity_test() are higher than those for single_test_10x() and single_test_SMART(). These results are consistent with our previous findings.
+```{r,echo=FALSE}
+
+
+
+ggplot(kstest_data , aes( y=ks,fill=method,x=method)) +
+  geom_boxplot()+ylab("ks D Statistics")+ ggtitle("Plot of ks D statistics") +
+  theme(plot.title = element_text(hjust = 0.5)) 
+
+
+
+
+
+```
+
+
+
+
