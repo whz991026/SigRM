@@ -42,3 +42,5 @@ Suggests:
     SingleCellExperiment,
     scater
 VignetteBuilder: knitr
+URL: https://github.com/whz991026/SIGMR
+BugReports: https://github.com/whz991026/SIGMR/issues
