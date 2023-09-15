@@ -1,3 +1,3 @@
 # SIGMR 1.0
 
-* Initial CRAN submission.
+* The first version 1.0 

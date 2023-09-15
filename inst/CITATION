@@ -1,0 +1,13 @@
+citHeader("To cite the SIGMR package in publications use:")
+citEntry(entry="Manual",
+         title ="SIGMR: similarity-guided single cell RNA methylation analysis from DART-seq data",
+         author = "Haozhe Wang", "Yue Wang", "Jia Meng",
+         Organization = " Xi'an Jiaotong-Liverpool University",       
+         year         = 2023,
+         url          = "https://github.com/whz991026/SIGMR",
+         textVersion =  
+         paste("Wang, H. (2023) ", 
+               "SIGMR: similarity-guided single cell RNA methylation analysis from DART-seq data,",
+               " Xi'an Jiaotong-Liverpool University, ",
+                "https://github.com/whz991026/SIGMR",
+                ".",sep="") )

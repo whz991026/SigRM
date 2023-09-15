@@ -33,6 +33,8 @@ You can install the development version of SIGMR from [GitHub](https://github.co
 ``` r
 # install.packages("devtools")
 devtools::install_github("whz991026/SIGMR")
+# if you want to build with vignette
+# devtools::install_github("whz991026/SIGMR",build_vignettes = TRUE)
 ```
 
 ## Example
