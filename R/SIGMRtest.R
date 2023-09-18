@@ -17,7 +17,7 @@
 #'
 #'
 #' @return a list c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-#'  "log2 Odds Ratio","p value","abundance","adjusted p value")
+#'  "log2 Odds Ratio","p value","abundance","adjusted p value","p0)
 #'
 #'  1.The first part of the list is the meth proportion data frame (row is gene
 #'  and column is single cell) in the test cells.
@@ -27,7 +27,7 @@
 #'  5.The fifth part of the list is the p value data frame for the test cells.
 #'  6.The sixth part of the list is the estimated gene abundance vector.
 #'  7.The seventh part of the list is the adjusted p value data frame for the test cells.
-#'
+#'  8.p0
 #' @export
 #'
 #' @importFrom stats p.adjust
@@ -60,6 +60,11 @@ SIGMRtest <-
     if( any( ncol(meth_control)!=ncol(unmeth_control), ncol(meth_test)!=ncol(unmeth_test)) ){
       stop( "meth sample and unmeth sample must be the same replicates" )
     }
+    if( any( nrow(meth_control)!=nrow(meth_test), nrow(meth_test)!=nrow(unmeth_test), 
+             nrow(meth_test)!=nrow(unmeth_control)) ){
+      stop( "mall four samples must have same number of sites" )
+    }
+    
     if(  ncol(meth_control)<=1 ){
       stop( "number of control sample must be larger than 1" )
     }
@@ -208,7 +213,7 @@ SIGMRtest <-
       res[[i]] <- data.frame(res[[i]])
       colnames(res[[i]]) <- paste0("cell_",(1:dim(res[[i]])[2]))
     }
-
+    res[[8]] <- p0
     names(res) <-c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-                   "log2 Odds Ratio","p value","aboundance","adjusted p value")
+                   "log2 Odds Ratio","p value","aboundance","adjusted p value","p0")
     return(res)}

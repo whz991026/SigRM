@@ -28,8 +28,6 @@ sizeFactor <- function(data) {
 ## estimate P function.
 estimateP <- function(meth, unmeth, size) {
   p <- rowSums(t(t(meth)/size))/rowSums(t(t(unmeth+meth)/size))
-  p[is.na(p)] <- 0.5
-  p[is.infinite(p)] <- 0.5
   return(p)
 }
 
@@ -46,7 +44,6 @@ estimateQ <- function(total_control,total_test,s_control,s_test){
 estimateE <- function(meth,unmeth,size,q){
   
   e <- rowMeans(t(t(meth+unmeth)/size))/q
-  e[is.na(e)] <- 0
   return(e)
 }
 

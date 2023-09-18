@@ -215,6 +215,7 @@ single_test_10x <- function(meth1,meth2,unmeth1,unmeth2){
     
 
 
+# put into the SMART model
 single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
   
   # combine as the total reads
@@ -229,7 +230,7 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
   # find the site satisfies the three conditions
   if (length(dim(meth2)[2])==0){
      # first condition
-      index_1 <- which(data2>=10)
+      index_1 <- which(data2>=20)
       
       # second condition
       p_test <- meth2/data2
@@ -241,14 +242,14 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
       index_3 <- index_3 [index_3 %in% index_2]
       
       #fourth condition
-      index_4 <- which(meth1>=2)
+      index_4 <- which(meth2>=2)
       index <- index_4 [index_4 %in% index_3]
   }else{
     index <- list()
     for (i in 1 : dim(meth2)[2]){
       
       # first condition
-      index_1 <- which(data2[,i]>=3)
+      index_1 <- which(data2[,i]>=20)
       
       # second condition
       p_test <- meth2[,i]/data2[,i]
@@ -261,7 +262,7 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
       index_3 <- index_3 [index_3 %in% index_2]
       
       #fourth condition
-      index_4 <- which(meth1>=2)
+      index_4 <- which(meth2[,i]>=2)
       index[[i]] <- index_4 [index_4 %in% index_3]
     }
     
@@ -273,6 +274,7 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
   return(index)
   
 }
+
 ```
 
 
@@ -292,11 +294,11 @@ FDR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
 }
 ```
 
-### TDR function
+### TPR function
 
-TDR_function(): This function calculates the TDR (true discovery rate).
+TPR_function(): This function calculates the TPR (true positive rate).
 ```{r,include=FALSE}
-TDR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
+TPR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
   if(adjust==TRUE){
      res <- p.adjust(res,method = "BH",n=length(res))
   }
@@ -415,11 +417,11 @@ ratio_plot <- function(x,idx){
 
 
 ### test_function()
-In the following, test_function() is the function used to simulate data and obtain results from the SIGMR, 10x, and SMART models. Since the 10x and SMART methods can only determine whether sites are m6A or not, whereas the SIGMR provides p-values, we establish a threshold to ensure that the number of m6A sites detected by SIGMR matches that of 10x or SMART for a fair comparison. We then evaluate and compare the performance based on AUC, FDR, and TDR. The output of test_function() is a list with seven components:
+In the following, test_function() is the function used to simulate data and obtain results from the SIGMR, 10x, and SMART models. Since the 10x and SMART methods can only determine whether sites are m6A or not, whereas the SIGMR provides p-values, we establish a threshold to ensure that the number of m6A sites detected by SIGMR matches that of 10x or SMART for a fair comparison. We then evaluate and compare the performance based on AUC, FDR, and TPR. The output of test_function() is a list with seven components:
 
 * AUC results for each method.
 * FDR results for each method.
-* TDR results for each method.
+* TPR results for each method.
 * Simulated data.
 * Results obtained from SIGMR.
 * Results from the 10x method.
@@ -458,13 +460,13 @@ fdr_SIGMR_10x <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_SMART <- numeric(dim(data[[2]])[2])
 fdr_single_10x <- numeric(dim(data[[2]])[2])
 fdr_single_SMART <- numeric(dim(data[[2]])[2])
-tdr_SIGMR_10x <- numeric(dim(data[[2]])[2])
-tdr_SIGMR_SMART <- numeric(dim(data[[2]])[2])
-tdr_single_10x <- numeric(dim(data[[2]])[2])
-tdr_single_SMART <- numeric(dim(data[[2]])[2])
+TPR_SIGMR_10x <- numeric(dim(data[[2]])[2])
+TPR_SIGMR_SMART <- numeric(dim(data[[2]])[2])
+TPR_single_10x <- numeric(dim(data[[2]])[2])
+TPR_single_SMART <- numeric(dim(data[[2]])[2])
 label=c(rep(0,round(n_Sites*(per_me))),rep(1,round(n_Sites*(1-per_me))))
 
-# calculate auc, fdr, tdr
+# calculate auc, fdr, TPR
 for (i in 1 : length(res2)){
   
   # AUC
@@ -488,13 +490,13 @@ for (i in 1 : length(res2)){
   p2[which(p.adjust(res1[[5]][,i] ,method = "BH")<=threshold1) ,i] <-0 
   auc_SIGMR_10x[i] <- auc(roc(label,p2[,i]))
   fdr_SIGMR_10x[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
-  tdr_SIGMR_10x[i]<-TDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  TPR_SIGMR_10x[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
   
   p2[,i] <-rep(1,length(res1[[5]][,i])) 
   p2[which(p.adjust(res1[[5]][,i] ,method = "BH")<=threshold2) ,i] <-0 
   auc_SIGMR_SMART[i] <- auc(roc(label,p2[,i]))
   fdr_SIGMR_SMART[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
-  tdr_SIGMR_SMART[i]<-TDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  TPR_SIGMR_SMART[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
   #FDR
 
   
@@ -502,11 +504,11 @@ for (i in 1 : length(res2)){
   fdr_single_10x[i] <-FDR_function(per_me,n_Sites,p[,i],threshold=threshold1)
   fdr_single_SMART[i] <-FDR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
   
-  #TDR
+  #TPR
   
   
-  tdr_single_10x[i] <-TDR_function(per_me,n_Sites,p[,i],threshold=threshold1)
-  tdr_single_SMART[i] <-TDR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
+  TPR_single_10x[i] <-TPR_function(per_me,n_Sites,p[,i],threshold=threshold1)
+  TPR_single_SMART[i] <-TPR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
 }
 
 # set table
@@ -516,14 +518,14 @@ auc_table <- cbind(c(auc_SIGMR_10x,auc_SIGMR_SMART,auc_single_10x,auc_single_SMA
 fdr_table <- cbind(c(fdr_SIGMR_10x,fdr_SIGMR_SMART,fdr_single_10x,fdr_single_SMART),
                    c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
 
-tdr_table <- cbind(c(tdr_SIGMR_10x,tdr_SIGMR_SMART,tdr_single_10x,tdr_single_SMART),
+TPR_table <- cbind(c(TPR_SIGMR_10x,TPR_SIGMR_SMART,TPR_single_10x,TPR_single_SMART),
                    c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
 
 # return list
 list_return <- list()
   list_return[[1]]=auc_table
   list_return[[2]]=fdr_table
-  list_return[[3]]=tdr_table
+  list_return[[3]]=TPR_table
   list_return[[4]]=data
   list_return[[5]]=res1
   list_return[[6]]=res2
@@ -563,23 +565,23 @@ colnames(FDR_metric) <- c("FDR","method")
 FDR_metric <- as.data.frame(FDR_metric)
 FDR_metric $FDR <-as.numeric(FDR_metric $FDR)
 
-TDR_metric <- metric[[3]]
-colnames(TDR_metric) <- c("TDR","method")
-TDR_metric <- as.data.frame(TDR_metric)
-TDR_metric $TDR <-as.numeric(TDR_metric$TDR)
+TPR_metric <- metric[[3]]
+colnames(TPR_metric) <- c("TPR","method")
+TPR_metric <- as.data.frame(TPR_metric)
+TPR_metric $TPR <-as.numeric(TPR_metric$TPR)
 
 
 ```
 
 
 ### Visualization the results
-Visualizing the results of the comparison of performance: AUC, FDR, and TDR.
+Visualizing the results of the comparison of performance: AUC, FDR, and TPR.
 
 The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SIGMR output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SIGMR and these methods.
 
 * In the AUC plot, it is evident that the AUC of SIGMR_10x surpasses that of 10x, and the AUC of SIGMR_SMART outperforms SMART.
 * Regarding the FDR plot, it's clear that the FDR of SIGMR_10x is lower than that of 10x, and the FDR of SIGMR_SMART is lower than SMART.
-* In the TDR plot, we observe that the TDR of SIGMR_10x is superior to that of 10x, and the TDR of SIGMR_SMART excels compared to SMART.
+* In the TPR plot, we observe that the TPR of SIGMR_10x is superior to that of 10x, and the TPR of SIGMR_SMART excels compared to SMART.
 * For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SIGMR results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SIGMR does not detect any sites with a log odds ratio or log risk ratio below 0.
 ```{r,results='hold',echo=FALSE}
 
@@ -593,8 +595,8 @@ ggplot(FDR_metric, aes( y=FDR,fill=method,x=method)) +
   theme(plot.title = element_text(hjust = 0.5)) 
 
 
-ggplot(TDR_metric , aes( y=TDR,fill=method,x=method)) + 
-  geom_boxplot() + ggtitle("Plot of TDR")+
+ggplot(TPR_metric , aes( y=TPR,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of TPR")+
   theme(plot.title = element_text(hjust = 0.5)) 
 
 res = metric[[5]]
@@ -794,9 +796,9 @@ auc_SIGMR <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_cluster <- numeric(dim(data[[2]])[2])
 fdr_SIGMR <- numeric(dim(data[[2]])[2])
 
-# TDR
-tdr_SIGMR_cluster <- numeric(dim(data[[2]])[2])
-tdr_SIGMR <- numeric(dim(data[[2]])[2])
+# TPR
+TPR_SIGMR_cluster <- numeric(dim(data[[2]])[2])
+TPR_SIGMR <- numeric(dim(data[[2]])[2])
 
 
 for (i in 1 : dim(data[[2]])[2]){
@@ -820,9 +822,9 @@ for (i in 1 : dim(data[[2]])[2]){
     fdr_SIGMR_cluster[i] <- FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
     fdr_SIGMR[i] <- FDR_function(per_me,n_Sites,p1[,i],threshold=threshold1)
     
-    # TDR
-    tdr_SIGMR_cluster[i] <- TDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
-    tdr_SIGMR[i] <- TDR_function(per_me,n_Sites,p1[,i],threshold=threshold1)
+    # TPR
+    TPR_SIGMR_cluster[i] <- TPR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+    TPR_SIGMR[i] <- TPR_function(per_me,n_Sites,p1[,i],threshold=threshold1)
 }
 
 auc_table <- cbind(c(auc_SIGMR_cluster,auc_SIGMR),c(rep("SIGMR_cluster",
@@ -843,12 +845,12 @@ fdr_table $FDR <-as.numeric(fdr_table $FDR)
 
 
 
-tdr_table <- cbind(c(tdr_SIGMR_cluster,tdr_SIGMR),c(rep("SIGMR_cluster",
+TPR_table <- cbind(c(TPR_SIGMR_cluster,TPR_SIGMR),c(rep("SIGMR_cluster",
                     dim(data[[2]])[2]),rep("SIGMR",dim(data[[2]])[2])))
 
-colnames(tdr_table) <- c("TDR","method")
-tdr_table <- as.data.frame(tdr_table)
-tdr_table $TDR <-as.numeric(tdr_table $TDR)
+colnames(TPR_table) <- c("TPR","method")
+TPR_table <- as.data.frame(TPR_table)
+TPR_table $TPR <-as.numeric(TPR_table $TPR)
 
 
 
@@ -864,7 +866,7 @@ label=c(rep(0,round(dim(data[[1]])[1]*(0.5))),rep(1,round(dim(data[[1]])[1]*(1-0
 p3 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
 auc_SIGMR_similarity <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_similarity <- numeric(dim(data[[2]])[2])
-tdr_SIGMR_similarity <- numeric(dim(data[[2]])[2])
+TPR_SIGMR_similarity <- numeric(dim(data[[2]])[2])
 
 
 for (i in 1 : dim(data[[2]])[2]){
@@ -879,7 +881,7 @@ for (i in 1 : dim(data[[2]])[2]){
   
   auc_SIGMR_similarity[i] <- auc(roc(label,p3[,i]))
   fdr_SIGMR_similarity[i] <- FDR_function(per_me,n_Sites,p3[,i],threshold=threshold3)
-  tdr_SIGMR_similarity[i] <- TDR_function(per_me,n_Sites,p3[,i],threshold=threshold3)
+  TPR_SIGMR_similarity[i] <- TPR_function(per_me,n_Sites,p3[,i],threshold=threshold3)
 }
 auc_table_ <-cbind(auc_SIGMR_similarity,rep("SIGMR_similarity",dim(data[[2]])[2]))
 colnames(auc_table_) <- c("AUC","method")
@@ -897,13 +899,13 @@ colnames(fdr_table) <- c("FDR","method")
 fdr_table <- as.data.frame(fdr_table)
 fdr_table $FDR <-as.numeric(fdr_table $FDR)
 
-tdr_table_ <-cbind(tdr_SIGMR_similarity,rep("SIGMR_similarity",dim(data[[2]])[2]))
-colnames(tdr_table_) <- c("TDR","method")
-tdr_table <- rbind(tdr_table,tdr_table_)
+TPR_table_ <-cbind(TPR_SIGMR_similarity,rep("SIGMR_similarity",dim(data[[2]])[2]))
+colnames(TPR_table_) <- c("TPR","method")
+TPR_table <- rbind(TPR_table,TPR_table_)
 
-colnames(tdr_table) <- c("TDR","method")
-tdr_table <- as.data.frame(tdr_table)
-tdr_table $TDR <-as.numeric(tdr_table $TDR)
+colnames(TPR_table) <- c("TPR","method")
+TPR_table <- as.data.frame(TPR_table)
+TPR_table $TPR <-as.numeric(TPR_table $TPR)
 
 
 
@@ -928,7 +930,7 @@ To determine whether SIGMR_cluster_test() and SIGMR_similarity_test() improve th
 
 * The FDR plot also demonstrates that clustering and similarity decrease the FDR.
 
-* Similarly, the TDR plot shows that clustering and similarity increase the TDR.
+* Similarly, the TPR plot shows that clustering and similarity increase the TPR.
 ```{r,echo=FALSE,results="hold"}
 
 ggplot(auc_table , aes( y=AUC,fill=method,x=method)) + 
@@ -939,8 +941,8 @@ ggplot(fdr_table , aes( y=FDR,fill=method,x=method)) +
   geom_boxplot() + ggtitle("Plot of FDR") +
   theme(plot.title = element_text(hjust = 0.5)) 
 
-ggplot(tdr_table , aes( y=TDR,fill=method,x=method)) + 
-  geom_boxplot() + ggtitle("Plot of TDR") +
+ggplot(TPR_table , aes( y=TPR,fill=method,x=method)) + 
+  geom_boxplot() + ggtitle("Plot of TPR") +
   theme(plot.title = element_text(hjust = 0.5)) 
 ```
 

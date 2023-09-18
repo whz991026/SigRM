@@ -119,6 +119,10 @@ SIGMR_similarity_test <-
       unmeth_test)) ){
       stop( "meth sample and unmeth sample must be the same replicates" )
     }
+    if( any( nrow(meth_control)!=nrow(meth_test), nrow(meth_test)!=nrow(unmeth_test), 
+             nrow(meth_test)!=nrow(unmeth_control)) ){
+      stop( "mall four samples must have same number of sites" )
+    }
     if(  ncol(meth_control)<=1 ){
       stop( "number of control sample must be larger than 1" )
     }
@@ -310,7 +314,6 @@ SIGMR_similarity_test <-
       res_final[[i]] <- data.frame(res_final[[i]])
       colnames(res_final[[i]]) <- paste0("cell_",(1:dim(res_final[[i]])[2]))
     }
-
     names(res_final )<- c("detect proportion treated","detect proportion control","log2 Risk Ratio",
                           "log2 Odds Ratio","p value","aboundance","adjusted p value")
     return(res_final)

@@ -40,7 +40,7 @@ SIGMRtest(
 }
 \value{
 a list c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-"log2 Odds Ratio","p value","abundance","adjusted p value")
+"log2 Odds Ratio","p value","abundance","adjusted p value","p0)
 
 1.The first part of the list is the meth proportion data frame (row is gene
 and column is single cell) in the test cells.
@@ -50,6 +50,7 @@ and column is single cell) in the test cells.
 5.The fifth part of the list is the p value data frame for the test cells.
 6.The sixth part of the list is the estimated gene abundance vector.
 7.The seventh part of the list is the adjusted p value data frame for the test cells.
+8.p0
 }
 \description{
 This function serves as the central component for single-cell RNA methylation

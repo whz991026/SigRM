@@ -118,6 +118,10 @@ SIGMR_cluster_test <-
       unmeth_test)) ){
       stop( "meth sample and unmeth sample must be the same replicates" )
     }
+    if( any( nrow(meth_control)!=nrow(meth_test), nrow(meth_test)!=nrow(unmeth_test), 
+             nrow(meth_test)!=nrow(unmeth_control)) ){
+      stop( "mall four samples must have same number of sites" )
+    }
     if(  ncol(meth_control)<=1 ){
       stop( "number of control sample must be larger than 1" )
     }
