@@ -16,7 +16,7 @@
 #' @param remove.false remove some false positive or not
 #'
 #'
-#' @return a list c("detect proportion treated","detect proportion control","log2 Risk Ratio",
+#' @return a list c("treated detect proportion ,"control detect proportion","log2 Risk Ratio",
 #'  "log2 Odds Ratio","p value","abundance","adjusted p value","p0)
 #'
 #'  1.The first part of the list is the meth proportion data frame (row is gene
@@ -27,7 +27,19 @@
 #'  5.The fifth part of the list is the p value data frame for the test cells.
 #'  6.The sixth part of the list is the estimated gene abundance vector.
 #'  7.The seventh part of the list is the adjusted p value data frame for the test cells.
-#'  8.p0
+#'  
+#'  
+#'  For NA in the return list:
+#'  
+#'  1. NA in the treated detect proportion, it is caused by that the test cells have no reads 
+#'  in both methylation reads and un methylation reads
+#'  2. NA in the control detect proportion, it is caused by that the all control cells have 
+#'  no reads in both methylation reads and un methylation reads
+#'  3. NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group,
+#'   or the methylation proportion is 0 in both test cell and control group.
+#'  4. NA in the odds ratio, is similar to the risk ratio
+#'  5. NA in the p value, it is only caused by the that control detect proportion is NA and the 
+#'  treated detect proportion is not NA. If the treated detect proportion is NA the p-value is 1.
 #' @export
 #'
 #' @importFrom stats p.adjust
@@ -213,7 +225,6 @@ SIGMRtest <-
       res[[i]] <- data.frame(res[[i]])
       colnames(res[[i]]) <- paste0("cell_",(1:dim(res[[i]])[2]))
     }
-    res[[8]] <- p0
     names(res) <-c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-                   "log2 Odds Ratio","p value","aboundance","adjusted p value","p0")
+                   "log2 Odds Ratio","p value","aboundance","adjusted p value")
     return(res)}

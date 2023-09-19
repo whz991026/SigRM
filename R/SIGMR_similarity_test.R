@@ -36,7 +36,17 @@
 #'  5.The fifth part of the list is the p value data frame for the test cells.
 #'  6.The sixth part of the list is the estimated gene abundance data frame.
 #'  7.The seventh part of the list is the adjusted p value data frame for the test cells.
-#'
+#'  For NA in the return list:
+#'  
+#'  1. NA in the treated detect proportion, it is caused by that the test cells have no reads 
+#'  in both methylation reads and un methylation reads
+#'  2. NA in the control detect proportion, it is caused by that the all control cells have 
+#'  no reads in both methylation reads and un methylation reads
+#'  3. NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group,
+#'   or the methylation proportion is 0 in both test cell and control group.
+#'  4. NA in the odds ratio, is similar to the risk ratio
+#'  5. NA in the p value, it is only caused by the that control detect proportion is NA and the 
+#'  treated detect proportion is not NA. If the treated detect proportion is NA the p-value is 1.
 #' @export
 #'
 #' @importFrom doBy which.minn which.maxn

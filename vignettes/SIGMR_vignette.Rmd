@@ -1028,7 +1028,7 @@ We can observe that the KS D statistics for SIGMRtest(), SIGMR_cluster_test(), a
 
 ggplot(kstest_data , aes( y=ks,fill=method,x=method)) +
   geom_boxplot()+ylab("ks D Statistics")+ ggtitle("Plot of ks D statistics") +
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5)) +guides(x = guide_axis(angle = 90))
 
 
 
