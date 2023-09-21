@@ -483,11 +483,11 @@ In the following, test_function() is the function used to simulate data and obta
 
 ```{r,include=FALSE}
 test_function <- function(n_Sites = 1000, test_num = 200, control_num = 300, 
-     min_expression = 1, max_expression = 4,dif_express =0.8, per_me = 1/2, 
-    prange1=c(0,0.45),p_s_1=0.05,prange2=c(0.4,0.8),
-     prange3=c(0,0.4),p_s_3=0.1,remove.false = TRUE){
-#n_Sites = 1000;test_num = 70; control_num = 300; min_expression = 1; max_expression = 4;
-#  dif_express = 1/2; per_me = 0.5;prange1=c(0,0.2);p_s_1=0.01;prange2=c(0.25,0.3);prange3=c(0,0.3);p_s_3=0.01;
+     min_expression = 0, max_expression = 3, per_me =  per_me,
+     prange1=c(0,0.2),p_s_1=0.01,prange2=c(0.25,0.4),prange3=c(0,0.3),p_s_3=0.01,
+      remove.false = TRUE){
+#n_Sites = 2000;test_num = 100; control_num = 300; min_expression = 0; max_expression = 3;
+#   per_me = 0.5;prange1=c(0,0.2);p_s_1=0.01;prange2=c(0.25,0.4);prange3=c(0,0.3);p_s_3=0.01;
 #  remove.false = TRUE
 options (warn = - 1)
 # simulate data
@@ -496,6 +496,7 @@ data <- simulateData(n_Sites = n_Sites,test_num = test_num,control_num = control
           prange1=prange1,p_s_1=p_s_1,prange2=prange2,prange3=prange3,p_s_3=p_s_3)
 
 # test
+
 res1 = SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
 res2 = single_test_10x(data[[1]],data[[2]],data[[3]],data[[4]])
 res3 = single_test_SMART(data[[1]],data[[2]],data[[3]],data[[4]])
@@ -662,12 +663,14 @@ TPR_metric $TPR <-as.numeric(TPR_metric$TPR)
 ### Visualization the results
 Visualizing the results of the comparison of performance: AUC, FDR, and TPR.
 
-The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SIGMR output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SIGMR and these methods.
+The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SIGMR output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SIGMR and these methods.We also compare the performance of the DESeq2 model.
 
-* In the AUC plot, it is evident that the AUC of SIGMR_10x surpasses that of 10x, and the AUC of SIGMR_SMART outperforms SMART.
-* Regarding the FDR plot, it's clear that the FDR of SIGMR_10x is lower than that of 10x, and the FDR of SIGMR_SMART is lower than SMART.
-* In the TPR plot, we observe that the TPR of SIGMR_10x is superior to that of 10x, and the TPR of SIGMR_SMART excels compared to SMART.
+* In the AUC plot, it is evident that the AUC of SIGMR_10x surpasses that of 10x, and the AUC of SIGMR_SMART outperforms SMART, we can also see that it better than the DESeq2 method.
+* Regarding the FDR plot, it's clear that the FDR of SIGMR_10x is lower than that of 10x, and the FDR of SIGMR_SMART is lower than SMART, we can also see that it lower than the DESeq2 method.
+* In the TPR plot, we observe that the TPR of SIGMR_10x is superior to that of 10x, and the TPR of SIGMR_SMART excels compared to SMART, we can also see that it better than the DESeq2 method.
 * For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SIGMR results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SIGMR does not detect any sites with a log odds ratio or log risk ratio below 0.
+
+
 ```{r,results='hold',echo=FALSE}
 
 ggplot(AUC_metric , aes( y=(AUC),fill=method,x=method)) + 
@@ -1125,7 +1128,7 @@ kstest_data$ks <- as.numeric(kstest_data$ks)
 
 
 ## Visualization the results
-We can observe that the KS D statistics for SIGMRtest(), SIGMR_cluster_test(), and SIGMR_similarity_test() are higher than those for single_test_10x() and single_test_SMART(). These results are consistent with our previous findings.
+We can observe that the KS statistics for SIGMRtest(), SIGMR_cluster_test(), and SIGMR_similarity_test() are higher than those for DESeq2, single_test_10x() and single_test_SMART(). These results are consistent with our previous findings.
 ```{r,echo=FALSE}
 
 
