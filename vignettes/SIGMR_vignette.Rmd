@@ -78,6 +78,13 @@ library(SingleCellExperiment)
 
 # BiocManager::install("scater")
 library(scater)
+
+
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+
+# BiocManager::install("DESeq2")
+library(DESeq2)
 ```
 
 # Quick start
@@ -165,24 +172,24 @@ Conversely, the single_test_SMART() function, designed for SMART-seq2 sample pre
 
 
 
-single_test_10x <- function(meth1,meth2,unmeth1,unmeth2){
+single_test_10x <- function(meth_control,meth_test,unmeth_control,unmeth_test){
   
   # combine as the total reads
-  data1 <- meth1+unmeth1
-  data2 <- meth2+unmeth2
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
   
   # calculate the mean p and the variance of the control data
   
-  p_control <- apply((meth1/data1) , 1, mean_na<- function(x) {mean(x,na.rm=TRUE)})
-  var_control <- apply((meth1/data1) , 1, var_na<- function(x){var(x,na.rm=TRUE)})
+  p_control <- apply((meth_control/data1) , 1, mean_na<- function(x) {mean(x,na.rm=TRUE)})
+  var_control <- apply((meth_control/data1) , 1, var_na<- function(x){var(x,na.rm=TRUE)})
   
   # find the site satisfies the three conditions
-  if (length(dim(meth2)[2])==0){
+  if (length(dim(meth_test)[2])==0){
      # first condition
       index_1 <- which(data2>=3)
       
       # second condition
-      p_test <- meth2/data2
+      p_test <- meth_test/data2
       index_2 <- which(p_test>=0.1)
       index_2 <- index_2[index_2 %in% index_1] 
       
@@ -191,13 +198,13 @@ single_test_10x <- function(meth1,meth2,unmeth1,unmeth2){
       index <- index_3 [index_3 %in% index_2]
   }else{
     index <- list()
-    for (i in 1 : dim(meth2)[2]){
+    for (i in 1 : dim(meth_test)[2]){
       
       # first condition
       index_1 <- which(data2[,i]>=3)
       
       # second condition
-      p_test <- meth2[,i]/data2[,i]
+      p_test <- meth_test[,i]/data2[,i]
       index_2 <- which(p_test>=0.1)
       index_2 <- index_2[index_2 %in% index_1]
       
@@ -216,24 +223,24 @@ single_test_10x <- function(meth1,meth2,unmeth1,unmeth2){
 
 
 # put into the SMART model
-single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
+single_test_SMART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
   
   # combine as the total reads
-  data1 <- meth1+unmeth1
-  data2 <- meth2+unmeth2
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
   
   # calculate the mean p and the variance of the control data
   
-  p_control <- apply((meth1/data1) , 1, mean_na<- function(x) {mean(x,na.rm=TRUE)})
-  var_control <- apply((meth1/data1) , 1, var_na<- function(x){var(x,na.rm=TRUE)})
+  p_control <- apply((meth_control/data1) , 1, mean_na<- function(x) {mean(x,na.rm=TRUE)})
+  var_control <- apply((meth_control/data1) , 1, var_na<- function(x){var(x,na.rm=TRUE)})
   
   # find the site satisfies the three conditions
-  if (length(dim(meth2)[2])==0){
+  if (length(dim(meth_test)[2])==0){
      # first condition
       index_1 <- which(data2>=20)
       
       # second condition
-      p_test <- meth2/data2
+      p_test <- meth_test/data2
       index_2 <- which(p_test>=0.1&p_test<=0.95)
       index_2 <- index_2[index_2 %in% index_1] 
       
@@ -242,17 +249,17 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
       index_3 <- index_3 [index_3 %in% index_2]
       
       #fourth condition
-      index_4 <- which(meth2>=2)
+      index_4 <- which(meth_test>=2)
       index <- index_4 [index_4 %in% index_3]
   }else{
     index <- list()
-    for (i in 1 : dim(meth2)[2]){
+    for (i in 1 : dim(meth_test)[2]){
       
       # first condition
       index_1 <- which(data2[,i]>=20)
       
       # second condition
-      p_test <- meth2[,i]/data2[,i]
+      p_test <- meth_test[,i]/data2[,i]
       index_2 <- which(p_test>=0.1&p_test<=0.95)
       index_2 <- index_2[index_2 %in% index_1]
       
@@ -262,7 +269,7 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
       index_3 <- index_3 [index_3 %in% index_2]
       
       #fourth condition
-      index_4 <- which(meth2[,i]>=2)
+      index_4 <- which(meth_test[,i]>=2)
       index[[i]] <- index_4 [index_4 %in% index_3]
     }
     
@@ -274,6 +281,50 @@ single_test_SMART <- function(meth1,meth2,unmeth1,unmeth2){
   return(index)
   
 }
+
+
+
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+   if (dim(meth_control)[2]<=10){
+    num <- dim(meth_control)[2]
+  } else {num <- 10}
+  
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control[,1:num],meth_test[,i],unmeth_control[,1:num],unmeth_test[,i])
+    design = data.frame(Reps = rep(c(paste0("Rep", 1:num),"Rep1"),2),
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~ Reps + Meth + Trt + Meth*Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = colSums(cbind((meth_control[,1:num]+unmeth_control[,1:num]),
+                       (meth_test[,i]+unmeth_test[,i])))
+    sf = sf/median(sf)
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+  
+  
+  
+  
+ 
+  
+  return(res)
+}
+
+
 
 ```
 
@@ -433,10 +484,10 @@ In the following, test_function() is the function used to simulate data and obta
 ```{r,include=FALSE}
 test_function <- function(n_Sites = 1000, test_num = 200, control_num = 300, 
      min_expression = 1, max_expression = 4,dif_express =0.8, per_me = 1/2, 
-     dif_me = 1/4, lib_s = 1/5, d =1,prange1=c(0,0.45),p_s_1=0.05,prange2=c(0.4,0.8),
+    prange1=c(0,0.45),p_s_1=0.05,prange2=c(0.4,0.8),
      prange3=c(0,0.4),p_s_3=0.1,remove.false = TRUE){
 #n_Sites = 1000;test_num = 70; control_num = 300; min_expression = 1; max_expression = 4;
-#  dif_express = 1/2; per_me = 0.5 ;dif_me = 1/4;lib_s = 1/5; d =  0.1;prange1=c(0,0.2);p_s_1=0.01;prange2=c(0.25,0.3);prange3=c(0,0.3);p_s_3=0.01;
+#  dif_express = 1/2; per_me = 0.5;prange1=c(0,0.2);p_s_1=0.01;prange2=c(0.25,0.3);prange3=c(0,0.3);p_s_3=0.01;
 #  remove.false = TRUE
 options (warn = - 1)
 # simulate data
@@ -448,22 +499,30 @@ data <- simulateData(n_Sites = n_Sites,test_num = test_num,control_num = control
 res1 = SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
 res2 = single_test_10x(data[[1]],data[[2]],data[[3]],data[[4]])
 res3 = single_test_SMART(data[[1]],data[[2]],data[[3]],data[[4]])
+res4 = DESeq2_test(data[[1]],data[[2]],data[[3]],data[[4]])
+
 # set parameter
 p <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
 p_ <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
 p2 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
 auc_SIGMR_10x <- numeric(dim(data[[2]])[2])
 auc_SIGMR_SMART <- numeric(dim(data[[2]])[2])
+auc_DESeq_10x <- numeric(dim(data[[2]])[2])
+auc_DESeq_SMART <- numeric(dim(data[[2]])[2])
 auc_single_10x <- numeric(dim(data[[2]])[2])
 auc_single_SMART <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_10x <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_SMART <- numeric(dim(data[[2]])[2])
 fdr_single_10x <- numeric(dim(data[[2]])[2])
 fdr_single_SMART <- numeric(dim(data[[2]])[2])
+fdr_DESeq_10x <- numeric(dim(data[[2]])[2])
+fdr_DESeq_SMART <- numeric(dim(data[[2]])[2])
 TPR_SIGMR_10x <- numeric(dim(data[[2]])[2])
 TPR_SIGMR_SMART <- numeric(dim(data[[2]])[2])
 TPR_single_10x <- numeric(dim(data[[2]])[2])
 TPR_single_SMART <- numeric(dim(data[[2]])[2])
+TPR_DESeq_10x <- numeric(dim(data[[2]])[2])
+TPR_DESeq_SMART <- numeric(dim(data[[2]])[2])
 label=c(rep(0,round(n_Sites*(per_me))),rep(1,round(n_Sites*(1-per_me))))
 
 # calculate auc, fdr, TPR
@@ -497,9 +556,9 @@ for (i in 1 : length(res2)){
   auc_SIGMR_SMART[i] <- auc(roc(label,p2[,i]))
   fdr_SIGMR_SMART[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
   TPR_SIGMR_SMART[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
-  #FDR
-
   
+
+  #FDR
   
   fdr_single_10x[i] <-FDR_function(per_me,n_Sites,p[,i],threshold=threshold1)
   fdr_single_SMART[i] <-FDR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
@@ -509,17 +568,42 @@ for (i in 1 : length(res2)){
   
   TPR_single_10x[i] <-TPR_function(per_me,n_Sites,p[,i],threshold=threshold1)
   TPR_single_SMART[i] <-TPR_function(per_me,n_Sites,p_[,i],threshold=threshold2)
+  
+  
+  
+  
+  threshold1 <- p.adjust(res4[[i]][[5]],method = "BH")[order(p.adjust(res4[[i]][[5]],
+                                                            method = "BH"))][l1]
+  threshold2 <-  p.adjust(res4[[i]][[5]],method = "BH")[order(p.adjust(res4[[i]][[5]],
+                                                            method = "BH"))][l2]
+  
+
+  p2[,i] <-rep(1,length(res4[[i]][[5]])) 
+  p2[which(p.adjust(res4[[i]][[5]] ,method = "BH")<=threshold1) ,i] <-0 
+  auc_DESeq_10x[i] <- auc(roc(label,p2[,i]))
+  fdr_DESeq_10x[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  TPR_DESeq_10x[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  
+  p2[,i] <-rep(1,length(res4[[i]][[5]])) 
+  p2[which(p.adjust(res4[[i]][[5]] ,method = "BH")<=threshold2) ,i] <-0 
+  auc_DESeq_SMART[i] <- auc(roc(label,p2[,i]))
+  fdr_DESeq_SMART[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  TPR_DESeq_SMART[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  
 }
 
 # set table
-auc_table <- cbind(c(auc_SIGMR_10x,auc_SIGMR_SMART,auc_single_10x,auc_single_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+auc_table <- cbind(c(auc_SIGMR_10x,auc_SIGMR_SMART,auc_single_10x,auc_single_SMART,
+                     auc_DESeq_10x,auc_DESeq_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq_10x",length(res2)), rep("DESeq_SMART",length(res2))))
 
-fdr_table <- cbind(c(fdr_SIGMR_10x,fdr_SIGMR_SMART,fdr_single_10x,fdr_single_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+fdr_table <- cbind(c(fdr_SIGMR_10x,fdr_SIGMR_SMART,fdr_single_10x,fdr_single_SMART,
+                     fdr_DESeq_10x,fdr_DESeq_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq_10x",length(res2)), rep("DESeq_SMART",length(res2))))
 
-TPR_table <- cbind(c(TPR_SIGMR_10x,TPR_SIGMR_SMART,TPR_single_10x,TPR_single_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+TPR_table <- cbind(c(TPR_SIGMR_10x,TPR_SIGMR_SMART,TPR_single_10x,TPR_single_SMART
+                     ,TPR_DESeq_10x,TPR_DESeq_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq_10x",length(res2)), rep("DESeq_SMART",length(res2))))
 
 # return list
 list_return <- list()
@@ -530,6 +614,7 @@ list_return <- list()
   list_return[[5]]=res1
   list_return[[6]]=res2
   list_return[[7]]=res3
+  list_return[[8]]=res4
 
 return(list_return)
 
@@ -552,7 +637,7 @@ test_num = 100
 control_num = 300
 
 metric <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
-      control_num , min_expression = 1, max_expression = 4, per_me =  per_me ,prange1=c(0,0.2),p_s_1=0.01,prange2=c(0.25,0.3),prange3=c(0,0.3),p_s_3=0.01,
+      control_num , min_expression = 0, max_expression = 3, per_me =  per_me ,prange1=c(0,0.2),p_s_1=0.01,prange2=c(0.25,0.4),prange3=c(0,0.3),p_s_3=0.01,
       remove.false = TRUE)
 
 AUC_metric <- metric[[1]]
@@ -585,17 +670,17 @@ The single_test_10x() and single_test_SMART() functions can only determine wheth
 * For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SIGMR results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SIGMR does not detect any sites with a log odds ratio or log risk ratio below 0.
 ```{r,results='hold',echo=FALSE}
 
-ggplot(AUC_metric , aes( y=AUC,fill=method,x=method)) + 
+ggplot(AUC_metric , aes( y=(AUC),fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of AUC") +
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5))
 
 
-ggplot(FDR_metric, aes( y=FDR,fill=method,x=method)) + 
+ggplot(FDR_metric, aes( y=(FDR),fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of FDR")+
   theme(plot.title = element_text(hjust = 0.5)) 
 
 
-ggplot(TPR_metric , aes( y=TPR,fill=method,x=method)) + 
+ggplot(TPR_metric , aes( y=(TPR),fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of TPR")+
   theme(plot.title = element_text(hjust = 0.5)) 
 
@@ -935,15 +1020,18 @@ To determine whether SIGMR_cluster_test() and SIGMR_similarity_test() improve th
 
 ggplot(auc_table , aes( y=AUC,fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of AUC") +
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0.82,0.88)
 
 ggplot(fdr_table , aes( y=FDR,fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of FDR") +
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0.1,0.2)
 
 ggplot(TPR_table , aes( y=TPR,fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of TPR") +
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  ylim(0.82,0.88)
 ```
 
 
@@ -957,18 +1045,32 @@ In the simulation data, we designate the top 50% of the data as m6A sites. We th
 res1 <- metric[[5]]
 res2 <- metric[[6]]
 res3 <- metric[[7]]
+res4 <- metric[[8]]
 res1_ <- list()
 res2_ <- list()
 res3_ <- list()
+res4_ <- list()
 res_cluster_ <- list()
 res_similarity_ <- list()
 res1_ks <- c()
 res2_ks <- c()
 res3_ks <- c()
+res4_ks <- c()
 res_cluster_ks <- c()
 res_similarity_ks <- c()
 
 
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
 
 for (i in 1:length(res2)){
   
@@ -986,32 +1088,34 @@ for (i in 1:length(res2)){
   
  
    
-    res1_ks[i] <- ks.test(res1[[7]][(round(0.3*n_Sites)+1):round(0.65*n_Sites),i],
-                          res1[[7]][(round(0.65*n_Sites)+1):n_Sites,i])$statistic
+    res1_ks[i] <- ks_function(res1[[5]][(round(0.3*n_Sites)+1):round(0.65*n_Sites),i],
+                          res1[[5]][(round(0.65*n_Sites)+1):n_Sites,i])
      
-    res2_ks[i] <- ks.test(res2_[[i]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
-                          res2_[[i]][(round(0.65*n_Sites)+1):n_Sites])$statistic
+    res2_ks[i] <- ks_function(res2_[[i]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
+                          res2_[[i]][(round(0.65*n_Sites)+1):n_Sites])
 
   
   
-    res3_ks[i] <- ks.test(res3_[[i]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
-                          res3_[[i]][(round(0.65*n_Sites)+1):n_Sites])$statistic
+    res3_ks[i] <- ks_function(res3_[[i]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
+                          res3_[[i]][(round(0.65*n_Sites)+1):n_Sites])
  
+    res4_ks[i] <- ks_function(res4[[i]][[5]][(round(0.3*n_Sites)+1):round(0.65*n_Sites)],
+                          res4[[i]][[5]][(round(0.65*n_Sites)+1):n_Sites])
+    
+    res_cluster_ks[i] <- ks_function(res_cluster[[5]][(round(0.3*n_Sites)+1):round(
+      0.65*n_Sites),i],res_cluster[[5]][(round(0.65*n_Sites)+1):n_Sites,i])
     
     
-    res_cluster_ks[i] <- ks.test(res_cluster[[5]][(round(0.3*n_Sites)+1):round(
-      0.65*n_Sites),i],res_cluster[[5]][(round(0.65*n_Sites)+1):n_Sites,i])$statistic
     
-    
-    
-    res_similarity_ks[i] <- ks.test(res_similarity[[7]][(round(0.3*n_Sites)+1):
-                                                          round(0.65*n_Sites),i],res_similarity[[7]][(round(0.65*n_Sites)+1):n_Sites,i])$statistic
+    res_similarity_ks[i] <- ks_function(res_similarity[[5]][(round(0.3*n_Sites)+1):
+                                                          round(0.65*n_Sites),i],res_similarity[[5]][(round(0.65*n_Sites)+1):n_Sites,i])
     
 }
 
-kstest_data <- cbind(c(res1_ks,res2_ks,res3_ks,res_cluster_ks,res_similarity_ks),
+kstest_data <- cbind(c(res1_ks,res2_ks,res3_ks,res4_ks,res_cluster_ks,res_similarity_ks),
                      c(rep("SIGMR",length(res2)),rep("10X",length(res2)),
-                       rep("SMART",length(res2)),rep("SIGMR_cluster",length(res2)),
+                       rep("SMART",length(res2)),rep("DESeq",length(res2)),
+                       rep("SIGMR_cluster",length(res2)),
                        rep("SIGMR_similarity",length(res2))))
 kstest_data  <- data.frame(kstest_data )
 colnames(kstest_data ) <- c("ks","method")

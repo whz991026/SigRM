@@ -20,7 +20,8 @@ Suggests:
     pROC,
     SC3,
     SingleCellExperiment,
-    scater
+    scater,
+    DESeq2
 VignetteBuilder: knitr
 URL: https://github.com/whz991026/SIGMR
 BugReports: https://github.com/whz991026/SIGMR/issues
