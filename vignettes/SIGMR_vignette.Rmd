@@ -5,7 +5,7 @@ output:
     toc: true
     toc_depth: 3
 abstract: |
-  The SIGMR package introduces an innovative statistical approach, employing a similarity-guided multi-resolution analysis for precise m6A modification site detection within DART-seq data. This specialized toolkit, consisting of three pivotal functions, empowers researchers to explore single-cell RNA methylation sites comprehensively. SIGMRtest delves deep into m6A modifications at the individual cell level. SIGMR_similarity_test facilitates control group selection based on test cell similarity, with customizable control cell numbers. Lastly, SIGMR_cluster_test is essential for clustering cells based on gene expression or read counts, seamlessly accommodating both test and control groups. This method relies on control cells with similar gene expression patterns for comparison, systematically evaluating test cell behavior. The SIGMR package enhances the accuracy of methylation site results derived from DART-seq data, offering researchers powerful tools. For inquiries, contact Haozhe.Wang17@student.xjtlu.edu.cn. The accompanying document provides an introduction to using the SIGMR package, including a quick start guide, performance comparisons with the original method, and evaluation of clustering or selecting similar expression cells as control cells. It also outlines using the KS test when site labels are unavailable.\n <center> **Table of content** </center>
+  The SIGMR package introduces an innovative statistical approach, employing a similarity-guided multi-resolution analysis for precise m6A modification site detection within DART-seq data. This specialized toolkit, consisting of three pivotal functions, empowers researchers to explore single-cell RNA methylation sites comprehensively. SIGMRtest delves deep into m6A modifications at the individual cell level. SIGMR_similarity_test facilitates control group selection based on test cell similarity, with customizable control cell numbers. Lastly, SIGMR_cluster_test is essential for clustering cells based on gene expression or read counts, seamlessly accommodating both test and control groups. This method relies on control cells with similar gene expression patterns for comparison, systematically evaluating test cell behavior. The SIGMR package enhances the accuracy of methylation site results derived from DART-seq data, offering researchers tools. For inquiries, contact Haozhe.Wang17@student.xjtlu.edu.cn. The accompanying document provides an introduction to using the SIGMR package, including a quick start guide, performance comparisons with the original method, and evaluation of clustering or selecting similar expression cells as control cells. It also outlines using the KS test when site labels are unavailable.\n <center> **Table of content** </center>
 vignette: >
   % \VignetteIndexEntry{SIGMR_vignette}
   % \VignetteEngine{knitr::rmarkdown}
@@ -142,7 +142,7 @@ For the simulation data:
 * The dataset comprises 100 control cells and 300 test cells.
 * The logarithm of $q_{ij}$ follows a uniform distribution.
 * The detection level $p_{ij}$ also follows a uniform distribution.
-* For 50% of the background sites, the detection levels follow a $U(0, 0.2)$ distribution, while the corresponding test data follow a $U(0.25, 0.3)$ distribution. This indicates that the correct treatment significantly outperforms the control group for these sites, which are the modification sites. To introduce more diversity in the average detection levels of the background sites, I assigned different ranges within this distribution to different groups of sites, such as $U(0, 0.01)$, $U(0.01, 0.02)$, ..., and $U(0.19, 0.2)$.
+* For 50% of the background sites, the detection levels follow a $U(0, 0.2)$ distribution, while the corresponding test data follow a $U(0.25, 0.4)$ distribution. This indicates that the correct treatment significantly outperforms the control group for these sites, which are the modification sites. To introduce more diversity in the average detection levels of the background sites, I assigned different ranges within this distribution to different groups of sites, such as $U(0, 0.01)$, $U(0.01, 0.02)$, ..., and $U(0.19, 0.2)$.
 * For the remaining sites, their detection levels are similar, following a $U(0, 0.3)$ distribution. To ensure similarity, I assigned different ranges within this distribution to different groups of sites, such as $U(0, 0.01)$, $U(0.01, 0.02)$, ..., and $U(0.29, 0.3)$.
 
 By the way, the simulateData() function is responsible for generating the dataset, as before, and provides an output list containing methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group.
@@ -284,6 +284,15 @@ single_test_SMART <- function(meth_control,meth_test,unmeth_control,unmeth_test)
 
 
 
+
+
+
+```
+
+### Function base on DESeq2
+
+DESeq2_test() is the function base on the DESeq2 model.
+```{r,include=FALSE}
 DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
   meth_control <- data.frame(meth_control)
   meth_test <- data.frame(meth_test)
@@ -324,10 +333,7 @@ DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
   return(res)
 }
 
-
-
 ```
-
 
 ### FDR function
 
