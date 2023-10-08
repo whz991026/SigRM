@@ -57,7 +57,7 @@ replicates of the test cells)}
 }
 \value{
 a list  c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-"log2 Odds Ratio","p value","abundance","adjusted p value")
+"log2 Odds Ratio","p value","abundance","adjusted p value","control_index")
 
 1.The first part of the list is the meth proportion data frame (row is gene
 and column is single cell) in the test cells.
@@ -69,6 +69,7 @@ and column is single cell) in the control cells.
 6.The sixth part of the list is the estimated gene abundance data frame.
 7.The seventh part of the list is the adjusted p value data frame for the test cells.
 For NA in the return list:
+8. The control cell index for each test cell, row is index,column is the test cell.
 \enumerate{
 \item NA in the treated detect proportion, it is caused by that the test cells have no reads
 in both methylation reads and un methylation reads

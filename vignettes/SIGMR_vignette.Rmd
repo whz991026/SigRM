@@ -514,22 +514,22 @@ p_ <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
 p2 <- data.frame(matrix(nrow=dim(data[[2]])[1]),ncol=dim(data[[2]])[2])
 auc_SIGMR_10x <- numeric(dim(data[[2]])[2])
 auc_SIGMR_SMART <- numeric(dim(data[[2]])[2])
-auc_DESeq_10x <- numeric(dim(data[[2]])[2])
-auc_DESeq_SMART <- numeric(dim(data[[2]])[2])
+auc_DESeq2_10x <- numeric(dim(data[[2]])[2])
+auc_DESeq2_SMART <- numeric(dim(data[[2]])[2])
 auc_single_10x <- numeric(dim(data[[2]])[2])
 auc_single_SMART <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_10x <- numeric(dim(data[[2]])[2])
 fdr_SIGMR_SMART <- numeric(dim(data[[2]])[2])
 fdr_single_10x <- numeric(dim(data[[2]])[2])
 fdr_single_SMART <- numeric(dim(data[[2]])[2])
-fdr_DESeq_10x <- numeric(dim(data[[2]])[2])
-fdr_DESeq_SMART <- numeric(dim(data[[2]])[2])
+fdr_DESeq2_10x <- numeric(dim(data[[2]])[2])
+fdr_DESeq2_SMART <- numeric(dim(data[[2]])[2])
 TPR_SIGMR_10x <- numeric(dim(data[[2]])[2])
 TPR_SIGMR_SMART <- numeric(dim(data[[2]])[2])
 TPR_single_10x <- numeric(dim(data[[2]])[2])
 TPR_single_SMART <- numeric(dim(data[[2]])[2])
-TPR_DESeq_10x <- numeric(dim(data[[2]])[2])
-TPR_DESeq_SMART <- numeric(dim(data[[2]])[2])
+TPR_DESeq2_10x <- numeric(dim(data[[2]])[2])
+TPR_DESeq2_SMART <- numeric(dim(data[[2]])[2])
 label=c(rep(0,round(n_Sites*(per_me))),rep(1,round(n_Sites*(1-per_me))))
 
 # calculate auc, fdr, TPR
@@ -587,30 +587,30 @@ for (i in 1 : length(res2)){
 
   p2[,i] <-rep(1,length(res4[[i]][[5]])) 
   p2[which(p.adjust(res4[[i]][[5]] ,method = "BH")<=threshold1) ,i] <-0 
-  auc_DESeq_10x[i] <- auc(roc(label,p2[,i]))
-  fdr_DESeq_10x[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
-  TPR_DESeq_10x[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  auc_DESeq2_10x[i] <- auc(roc(label,p2[,i]))
+  fdr_DESeq2_10x[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
+  TPR_DESeq2_10x[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold1)
   
   p2[,i] <-rep(1,length(res4[[i]][[5]])) 
   p2[which(p.adjust(res4[[i]][[5]] ,method = "BH")<=threshold2) ,i] <-0 
-  auc_DESeq_SMART[i] <- auc(roc(label,p2[,i]))
-  fdr_DESeq_SMART[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
-  TPR_DESeq_SMART[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  auc_DESeq2_SMART[i] <- auc(roc(label,p2[,i]))
+  fdr_DESeq2_SMART[i]<-FDR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
+  TPR_DESeq2_SMART[i]<-TPR_function(per_me,n_Sites,p2[,i],threshold=threshold2)
   
 }
 
 # set table
 auc_table <- cbind(c(auc_SIGMR_10x,auc_SIGMR_SMART,auc_single_10x,auc_single_SMART,
-                     auc_DESeq_10x,auc_DESeq_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq_10x",length(res2)), rep("DESeq_SMART",length(res2))))
+                     auc_DESeq2_10x,auc_DESeq2_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq2_10x",length(res2)), rep("DESeq2_SMART",length(res2))))
 
 fdr_table <- cbind(c(fdr_SIGMR_10x,fdr_SIGMR_SMART,fdr_single_10x,fdr_single_SMART,
-                     fdr_DESeq_10x,fdr_DESeq_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq_10x",length(res2)), rep("DESeq_SMART",length(res2))))
+                     fdr_DESeq2_10x,fdr_DESeq2_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq2_10x",length(res2)), rep("DESeq2_SMART",length(res2))))
 
 TPR_table <- cbind(c(TPR_SIGMR_10x,TPR_SIGMR_SMART,TPR_single_10x,TPR_single_SMART
-                     ,TPR_DESeq_10x,TPR_DESeq_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq_10x",length(res2)), rep("DESeq_SMART",length(res2))))
+                     ,TPR_DESeq2_10x,TPR_DESeq2_SMART),
+                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)), rep("DESeq2_10x",length(res2)), rep("DESeq2_SMART",length(res2))))
 
 # return list
 list_return <- list()
@@ -681,17 +681,20 @@ The single_test_10x() and single_test_SMART() functions can only determine wheth
 
 ggplot(AUC_metric , aes( y=(AUC),fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of AUC") +
-  theme(plot.title = element_text(hjust = 0.5))
+  theme(plot.title = element_text(hjust = 0.5))+
+  guides(x = guide_axis(angle = 90))
 
 
 ggplot(FDR_metric, aes( y=(FDR),fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of FDR")+
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(x = guide_axis(angle = 90))
 
 
 ggplot(TPR_metric , aes( y=(TPR),fill=method,x=method)) + 
   geom_boxplot() + ggtitle("Plot of TPR")+
-  theme(plot.title = element_text(hjust = 0.5)) 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(x = guide_axis(angle = 90))
 
 res = metric[[5]]
 
@@ -1123,7 +1126,7 @@ for (i in 1:length(res2)){
 
 kstest_data <- cbind(c(res1_ks,res2_ks,res3_ks,res4_ks,res_cluster_ks,res_similarity_ks),
                      c(rep("SIGMR",length(res2)),rep("10X",length(res2)),
-                       rep("SMART",length(res2)),rep("DESeq",length(res2)),
+                       rep("SMART",length(res2)),rep("DESeq2",length(res2)),
                        rep("SIGMR_cluster",length(res2)),
                        rep("SIGMR_similarity",length(res2))))
 kstest_data  <- data.frame(kstest_data )

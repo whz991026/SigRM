@@ -25,7 +25,7 @@
 #' @param remove.false remove some false positive or not
 #'
 #' @return a list  c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-#'  "log2 Odds Ratio","p value","abundance","adjusted p value")
+#'  "log2 Odds Ratio","p value","abundance","adjusted p value","control_index")
 #'
 #'  1.The first part of the list is the meth proportion data frame (row is gene
 #'  and column is single cell) in the test cells.
@@ -37,6 +37,7 @@
 #'  6.The sixth part of the list is the estimated gene abundance data frame.
 #'  7.The seventh part of the list is the adjusted p value data frame for the test cells.
 #'  For NA in the return list:
+#'  8. The control cell index for each test cell, row is index,column is the test cell.
 #'  
 #'  1. NA in the treated detect proportion, it is caused by that the test cells have no reads 
 #'  in both methylation reads and un methylation reads
@@ -271,6 +272,7 @@ SIGMR_similarity_test <-
           similarity_index_2[,i] <- similarity_index[which(similarity_index[,i]%in%
                       c((l_control+1):  (l_test+l_control))),i]
         }
+        similarity_index <- similarity_index_1
 
         # test
         res <- list()
@@ -296,6 +298,7 @@ SIGMR_similarity_test <-
           similarity_index_2[,i] <- similarity_index[which(similarity_index[,i]%in%
                            c((l_control+1):  (l_test+l_control))),i]
         }
+        similarity_index <- similarity_index_1
 
         # test
         res <- list()
@@ -324,8 +327,12 @@ SIGMR_similarity_test <-
       res_final[[i]] <- data.frame(res_final[[i]])
       colnames(res_final[[i]]) <- paste0("cell_",(1:dim(res_final[[i]])[2]))
     }
+    
+    res_final [[8]] <- data.frame(similarity_index[1:num_control,])
+    
+    
     names(res_final )<- c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-                          "log2 Odds Ratio","p value","aboundance","adjusted p value")
+                          "log2 Odds Ratio","p value","aboundance","adjusted p value","control_index")
     return(res_final)
 
 
