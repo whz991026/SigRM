@@ -2,11 +2,7 @@
 % Please edit documentation in R/SIGMR_similarity_test.R
 \name{SIGMR_similarity_test}
 \alias{SIGMR_similarity_test}
-\title{This function serves as the central component for single-cell RNA methylation
-site analysis by selecting the control group based on the similarity of each
-test cell. Users can choose the number of control cells, which are selected
-based on their similarity to the test cells. While it is possible to choose
-the number of test cells, it is not recommended, and the default is set to 1.}
+\title{This is the function work for the SIGMR_cluster_test}
 \usage{
 SIGMR_similarity_test(
   meth_control,
@@ -15,12 +11,16 @@ SIGMR_similarity_test(
   unmeth_test,
   expression = NA,
   method = "Pearson",
-  num_test = 1,
   num_control,
   size.factor = NA,
   plot.dispersion = FALSE,
   output.dir = NA,
-  remove.false = TRUE
+  remove.false = TRUE,
+  q = NA,
+  method_dispersion = "unbiased_estimate",
+  adjust_1 = 1e-05,
+  adjust_2 = 0.01,
+  one_side = TRUE
 )
 }
 \arguments{
@@ -42,9 +42,6 @@ variable is miss, we use read counts}
 \item{method}{calculate similarity method c("Euclidean distance","Manhattan distance",
 "Maximum distance","Pearson","Spearman")}
 
-\item{num_test}{number of cells in the test group (usual be 1 unless you have
-replicates of the test cells)}
-
 \item{num_control}{number of cells in the control group}
 
 \item{size.factor}{TRUE or FALSE}
@@ -54,10 +51,20 @@ replicates of the test cells)}
 \item{output.dir}{the path}
 
 \item{remove.false}{remove some false positive or not}
+
+\item{q}{expression aboundance}
+
+\item{method_dispersion}{the method to estimate the dispersion ("unbiased_estimate","mle","locfit")}
+
+\item{adjust_1}{adjust parameter for RR}
+
+\item{adjust_2}{adjust parameter for OR}
+
+\item{one_side}{p value is one side or both sides}
 }
 \value{
-a list  c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-"log2 Odds Ratio","p value","abundance","adjusted p value","control_index")
+a list c("methylation level treated","methylation level control","log2 Risk Ratio",
+"log2 Odds Ratio","p value","aboundance","adjusted p value","TCR")
 
 1.The first part of the list is the meth proportion data frame (row is gene
 and column is single cell) in the test cells.
@@ -68,26 +75,25 @@ and column is single cell) in the control cells.
 5.The fifth part of the list is the p value data frame for the test cells.
 6.The sixth part of the list is the estimated gene abundance data frame.
 7.The seventh part of the list is the adjusted p value data frame for the test cells.
+8.The eighth part of the list is the TCR for the test cells.
+
 For NA in the return list:
-8. The control cell index for each test cell, row is index,column is the test cell.
 \enumerate{
-\item NA in the treated detect proportion, it is caused by that the test cells have no reads
+\item NA in the treated methylation level, it is caused by that the test cells have no reads
 in both methylation reads and un methylation reads
-\item NA in the control detect proportion, it is caused by that the all control cells have
+\item NA in the control methylation level, it is caused by that the all control cells have
 no reads in both methylation reads and un methylation reads
-\item NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group,
-or the methylation proportion is 0 in both test cell and control group.
-\item NA in the odds ratio, is similar to the risk ratio
-\item NA in the p value, it is only caused by the that control detect proportion is NA and the
-treated detect proportion is not NA. If the treated detect proportion is NA the p-value is 1.
+\item NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group.
+\item NA in the TCR, is similar to the risk ratio.
+\item NA in the p value, it is only caused by the that control methylation level is NA and the
+treated methylation level is not NA.
 }
 }
 \description{
 This function serves as the central component for single-cell RNA methylation
 site analysis by selecting the control group based on the similarity of each
 test cell. Users can choose the number of control cells, which are selected
-based on their similarity to the test cells. While it is possible to choose
-the number of test cells, it is not recommended, and the default is set to 1.
+based on their similarity to the test cells.
 }
 \examples{
   data <- simulateData (test_num=1,control_num=30)
@@ -96,18 +102,18 @@ the number of test cells, it is not recommended, and the default is set to 1.
 
   # use Pearson
   res1 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
-  method="Pearson", num_test=1,num_control=3,size.factor=NA,plot.dispersion=FALSE,
+  method="Pearson",num_control=3,size.factor=NA,plot.dispersion=FALSE,
   output.dir = NA,remove.false = TRUE)
 
   # use Euclidean distance
   res2 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
-  method="Euclidean distance",num_test=1,num_control=3,size.factor=NA,
+  method="Euclidean distance",num_control=3,size.factor=NA,
   plot.dispersion=FALSE,   output.dir = NA,remove.false = TRUE)
 
  # use expression and Euclidean distance
  expression <- matrix (runif(31000,0,1),nrow=1000,ncol=31)
  res3<- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
- expression=expression,method="Euclidean distance",num_test=1,num_control=3,
+ expression=expression,method="Euclidean distance",num_control=3,
  size.factor=NA,plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 
 
@@ -118,32 +124,20 @@ the number of test cells, it is not recommended, and the default is set to 1.
 
   # use Pearson
   res1 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
-  method="Pearson",num_test=1,num_control=3,size.factor=NA,plot.dispersion=FALSE,
+  method="Pearson",num_control=3,size.factor=NA,plot.dispersion=FALSE,
   output.dir = NA,remove.false = TRUE)
 
   # use Euclidean distance
   res2 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
-  method="Euclidean distance",num_test=1,num_control=3,size.factor=NA,
+  method="Euclidean distance",num_control=3,size.factor=NA,
   plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 
-  res3 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
-  method="Pearson", num_test=3,num_control=3,size.factor=NA,plot.dispersion=
-  FALSE,output.dir = NA,remove.false = TRUE)
-
-  # use Euclidean distance with 3 replicates of test data
-  res4 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
-  method="Euclidean distance",num_test=3,num_control=3,size.factor=NA,
-  plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 
 
  # use expression and Euclidean distance
  expression <- matrix (runif(37000,0,1),nrow=1000,ncol=37)
  res5<- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
- expression=expression,method="Euclidean distance",num_test=1,num_control=3,
+ expression=expression,method="Euclidean distance",num_control=3,
  size.factor=NA,plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 
- # use expression and Euclidean distance with 3 replicates of test data
- res6<- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
- expression=expression,method="Euclidean distance",num_test=3,num_control=3,
- size.factor=NA,plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 }

@@ -1,25 +1,31 @@
 ## This is the document that contains the sub function for the main function
 
-#' @importFrom stats median
+#' @importFrom stats median 
 #' @import locfit
-#' @importFrom stats predict
+#' @importFrom stats predict optimize optimise
 #' @importFrom grDevices dev.off pdf
 #' @importFrom graphics contour par title
 #' @importFrom stats dnbinom
 ## get size factor function.
 
+rowMeans_function <- function(data){
+  l <- apply(data,1,function(x)length(which(x!=0)))
+  mean_value <- rowSums(data)/l
+  mean_value [which(l==0)] <- 0
+  mean_value
+}
 sizeFactor <- function(data) {
   # make the elements no smaller than 0
   data <- as.matrix(data)
-  data <- pmax(data,1e-5)
   
   # first log
   log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
   log_mean <- rowMeans(log_data)
   log_s <- log_data-log_mean
   
   # then exp
-  s_size <- exp(apply(log_s,2,median))
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
   return(s_size)
 }
 
@@ -35,7 +41,7 @@ estimateP <- function(meth, unmeth, size) {
 
 estimateQ <- function(total_control,total_test,s_control,s_test){
   temp <- t(t(cbind(total_control,total_test))/c(s_control,s_test))
-  q <- rowMeans(temp)
+  q <- rowMeans_function(temp)
   return(q)
 }
 
@@ -43,20 +49,19 @@ estimateQ <- function(total_control,total_test,s_control,s_test){
 
 estimateE <- function(meth,unmeth,size,q){
   
-  e <- rowMeans(t(t(meth+unmeth)/size))/q
+  e <- rowMeans_function(t(t(meth+unmeth)/size))/q
   return(e)
 }
 
-## The function to get estimated W
+## The function to get estimated v
 
-calculateW <- function(data,size,e){
+calculate_v <- function(data,size,e){
   
   q <-  t(t(data)/size)/e
-  q <- q-rowMeans(q)
-  w <- rowSums(q^2)/(length(size)-1)
-  w <- as.matrix(w)
-  w <- pmax(w,1e-8)
-  return(w)
+  q <- q-rowMeans_function(q)
+  v <- rowSums(q^2)/(length(size)-1)
+  v <- as.matrix(v)
+  return(v)
 }
 
 
@@ -72,25 +77,34 @@ calculateZ <- function(q,p,size,e){
 }
 
 
-## The function to local fit the W
+## The function to local fit the v
 
-locfitW <- function(p,q,w) {
+locfit_v <- function(p,q,v) {
   l <- log(q+1)
   intercept<-c(rep(1,length(q)))
-  data<-data.frame(cbind(p,l,intercept,w))
-  fit=locfit(w~lp(p,l,intercept),data=data,family="gamma")
+  data<-data.frame(cbind(p,l,intercept,v))
+  fit=locfit(v~lp(p,l,intercept),data=data,family="gamma")
   return(fit)
 }
 
 
+
+
 ## The function to get final estimated Z
 
-fittedW <- function(p,q,fit){
+fitted_v <- function(p,q,fit){
   l <- log(q+1)
-  intercept<-c(rep(1,length(q)))
+  intercept<-rep(1,length(q))
   data=data.frame(cbind(p,l,intercept))
-  w_fit <- predict(fit,data)
-  return(w_fit)
+  index <- which(is.na(p))
+  if(length(index)==0){
+    v_fit <- predict(fit,data)
+  }else{
+    v_fit <- rep(NA,length(q))
+    v_fit[-index] <- predict(fit,data[-index,])
+  }
+  
+  return(v_fit)
 }
 
 
@@ -98,13 +112,14 @@ fittedW <- function(p,q,fit){
 ## The function to get the fit of W
 
 baseFit <- function(meth,unmeth,p,q,e,size){
+  options(warn =-1)
   # get estimated w
-  w_meth <-calculateW(meth,size,e)
-  w_unmeth <-calculateW(unmeth,size,e)
+  v_meth <-calculate_v(meth,size,e)
+  v_unmeth <-calculate_v(unmeth,size,e)
   
   # locfit
-  fit_meth <- locfitW(p,q,w_meth)
-  fit_unmeth <- locfitW(p,q,w_unmeth)
+  fit_meth <- locfit_v(p,q,v_meth)
+  fit_unmeth <- locfit_v((1-p),q,v_unmeth)
   
   res <- list(fit_meth,fit_unmeth)
   return(res)
@@ -124,11 +139,29 @@ getEstimate <- function(meth_control,meth_test,unmeth_control,unmeth_test,s_cont
     
   }else{p_test <- data.frame(matrix(nrow=dim(meth_test)[1],ncol=dim(meth_test)[2]))
   p0 <- data.frame(matrix(nrow=dim(meth_test)[1],ncol=dim(meth_test)[2]))
-  for (i in 1:dim(meth_test)[2]){
-    p_test[,i] <- estimateP(meth_test[,i], unmeth_test[,i], s_test[i])
-    p0[,i] <- estimateP(cbind(meth_control,meth_test[,i]), cbind(unmeth_control,
-                                                                 unmeth_test[,i]), c(s_control,s_test[i]))
+  
+  
+  list_create <- as.list(as.data.frame(rbind(rep(dim(meth_test)[1],length(s_test)),
+                                             as.matrix(meth_test),as.matrix(unmeth_test),s_test)))
+  
+  list_function <- function(x) {
+    estimateP( x[2:(x[1]+1)], x[(2+x[1]):(2*x[1]+1)], x[2*x[1]+2])
   }
+  
+  p_test <- as.data.frame(lapply(list_create,list_function))
+  
+  
+  list_create <- as.list(as.data.frame(rbind(rep(dim(meth_test)[1],length(s_test)),
+                                             as.matrix(meth_test),as.matrix(unmeth_test),s_test)))
+  
+  list_function <- function(x) {
+    estimateP( cbind(meth_control,x[2:(x[1]+1)]), cbind(unmeth_control,x[(2+x[1]):
+                                                                           (2*x[1]+1)]), c(s_control,x[2*x[1]+2]))
+  }
+  
+  p0 <- as.data.frame(lapply(list_create,list_function))
+  
+  
   }
   
   
@@ -142,10 +175,15 @@ getEstimate <- function(meth_control,meth_test,unmeth_control,unmeth_test,s_cont
   if (length(dim(meth_test)[2])==0){
     e_test <- estimateE(meth_test,unmeth_test,s_test,q0)
   }else{
-    e_test <- data.frame(matrix(nrow=dim(meth_test)[1],ncol=dim(meth_test)[2]))
-    for (i in 1:dim(meth_test)[2]){
-      e_test[,i] <- estimateE(meth_test[,i],unmeth_test[,i],s_test[i],q0)
+    
+    list_create <- as.list(as.data.frame(rbind(rep(dim(meth_test)[1],length(s_test)),
+                                               as.matrix(meth_test),as.matrix(unmeth_test),s_test)))
+    
+    list_function <- function(x) {
+      estimateE( x[2:(x[1]+1)], x[(2+x[1]):(2*x[1]+1)], x[2*x[1]+2],q0)
     }
+    
+    e_test <- as.data.frame(lapply(list_create,list_function))
   }
   
   res <- list(p0=p0,p_control=p_control,p_test=p_test,q0=q0,e_control=e_control,
@@ -154,28 +192,69 @@ getEstimate <- function(meth_control,meth_test,unmeth_control,unmeth_test,s_cont
 }
 
 
-## The function to calculate all estimate variable for replicate happen on test data.
 
-
-getBaseEstimate <- function(meth_control,meth_test,unmeth_control,unmeth_test,s_control,s_test){
+getEstimate_withq <- function(meth_control,meth_test,unmeth_control,unmeth_test,
+                              s_control,s_test,q){
   
   # estimate probability of methylation under a condition
   p_control <- estimateP(meth_control, unmeth_control, s_control)
-  p_test <- estimateP(meth_test, unmeth_test, s_test)
-  p0 <- estimateP(cbind(meth_control,meth_test), cbind(unmeth_control,unmeth_test),
-                  c(s_control,s_test))
+  if (length(dim(meth_test)[2])==0){
+    
+    p_test <- estimateP(meth_test, unmeth_test, s_test)
+    p0 <- estimateP(cbind(meth_control,meth_test), cbind(unmeth_control,
+                                                         unmeth_test), c(s_control,s_test))
+    
+  }else{p_test <- data.frame(matrix(nrow=dim(meth_test)[1],ncol=dim(meth_test)[2]))
+  p0 <- data.frame(matrix(nrow=dim(meth_test)[1],ncol=dim(meth_test)[2]))
   
-  # estimate the abundance of feature
-  q0 <- estimateQ((meth_control+unmeth_control), (meth_test+unmeth_test),s_control,s_test)
+  
+  list_create <- as.list(as.data.frame(rbind(rep(dim(meth_test)[1],length(s_test)),
+                                             as.matrix(meth_test),as.matrix(unmeth_test),s_test)))
+  
+  list_function <- function(x) {
+    estimateP( x[2:(x[1]+1)], x[(2+x[1]):(2*x[1]+1)], x[2*x[1]+2])
+  }
+  
+  p_test <- as.data.frame(lapply(list_create,list_function))
+  
+  
+  list_create <- as.list(as.data.frame(rbind(rep(dim(meth_test)[1],length(s_test)),
+                                             as.matrix(meth_test),as.matrix(unmeth_test),s_test)))
+  
+  list_function <- function(x) {
+    estimateP( cbind(meth_control,x[2:(x[1]+1)]), cbind(unmeth_control,x[(2+x[1]):
+                                                                           (2*x[1]+1)]), c(s_control,x[2*x[1]+2]))
+  }
+  
+  p0 <- as.data.frame(lapply(list_create,list_function))
+  
+  
+  }
+  
   
   # estimate size e
-  e_control <- estimateE(meth_control,unmeth_control,s_control,q0)
-  e_test <- estimateE(meth_test,unmeth_test,s_test,q0)
+  e_control <- estimateE(meth_control,unmeth_control,s_control,q)
+  if (length(dim(meth_test)[2])==0){
+    e_test <- estimateE(meth_test,unmeth_test,s_test,q)
+  }else{
+    
+    list_create <- as.list(as.data.frame(rbind(rep(dim(meth_test)[1],length(s_test)),
+                                               as.matrix(meth_test),as.matrix(unmeth_test),s_test)))
+    
+    list_function <- function(x) {
+      estimateE( x[2:(x[1]+1)], x[(2+x[1]):(2*x[1]+1)], x[2*x[1]+2],q)
+    }
+    
+    e_test <- as.data.frame(lapply(list_create,list_function))
+  }
   
-  res <- list(p0=p0,p_control=p_control,p_test=p_test,q0=q0,e_control=e_control,
+  res <- list(p0=p0,p_control=p_control,p_test=p_test,e_control=e_control,
               e_test=e_test)
   return(res)
 }
+
+
+
 
 ## adjusted p
 p.adjustfun <-function(x) {p.adjust(x,method="BH")}
@@ -183,64 +262,53 @@ p.adjustfun <-function(x) {p.adjust(x,method="BH")}
 ## plot the dispersion fit
 
 plotDispersion <-function(fit_meth,fit_unmeth,path) {
-  p <- rep(seq(from=0,to=1,length=101),101)
-  q <- rep(seq(from=0,to=100,length=101),101)
-  p <- matrix(p,nrow = 101, ncol = 101,byrow=TRUE)
-  q <- matrix(q,nrow = 101, ncol = 101,byrow=FALSE)
-  
-  p <- p[1:10201]
-  q <- q[1:10201]
-  
-  w1 <- fittedW(p,q,fit_meth)
-  w1 <- matrix(log(w1),nrow = 101, ncol = 101,byrow=FALSE)
-  w2 <-  fittedW(p,q,fit_unmeth)
-  w2 <- matrix(log(w2),nrow = 101, ncol = 101,byrow=FALSE)
   
   
   pdf(path,height=8,width=7)
   #pdf("C:/Users/S41-70/Documents/dispersion.pdf",height=4,width=7)
-  par(mfrow=c(2,2))
-  
-  
-  
-  
-  contour(seq(from=0,to=1,by=0.01),seq(from=0,to=100,by=0.1),w1)
-  title(main="log(w)",sub="meth",ylab="log(q+1)", xlab="p")
-  contour(seq(from=0,to=1,by=0.01),seq(from=0,to=100,by=0.1),w2)
-  title(main="log(w)",sub="unmeth",ylab="log(q+1)", xlab="p")
+  if(inherits(fit_meth,"locfit")){
+    plot(fit_meth)
+  }else{
+    print("locfit for fit_meth can not plot")
+  }
+  if(inherits(fit_unmeth,"locfit")){
+    plot(fit_unmeth)
+  }else{
+    print("locfit for fit_unmeth can not plot")
+  }
   dev.off()
 }
 
 ## calculate the p value
 
-quadNBtest <- function(t1,t,n2,mu2_t,mu2_c,size2_t,size2_c){
-  nrows <- length(t)
-  pval <- rep(1,nrows)
-  
-  
-  t2=t-t1
+quadNBtest <- function(t2,n2,mu2_t,mu2_c,size2_t,size2_c,one_side=TRUE){
   
   
   
-  for (irow in 1:nrows) {
+  
+  list_create <- as.list(as.data.frame(t(cbind(t2,n2,mu2_t,mu2_c,size2_t,size2_c))))
+  
+  
+  list_function <- function(x){
     
-    trip <- n2[irow]
-    
-    if (trip<1) {p <- NA} else {
+    trip <- x[2]
+    if ( trip < 1) {
+      pv <- NA
+    }else {
       
-      trip_t2 <- 0:n2[irow]
-      trip_c2 <- n2[irow] - trip_t2
+      trip_t2 <- 0:x[2]
+      trip_c2 <- x[2] -  trip_t2
       
       
       
       
-      p1 <- dnbinom(x=trip_t2, size=size2_t[irow], mu=mu2_t[irow], log = TRUE)
-      if(mu2_t[irow]==0){
+      p1 <- dnbinom(x=trip_t2, size=x[5], mu=x[3], log = TRUE)
+      if(x[3]==0){
         p1 <- rep(0,length(p1))
       }
       
-      p2 <- dnbinom(x=trip_c2, size=size2_c[irow], mu=mu2_c[irow], log = TRUE)
-      if(mu2_c[irow]==0){
+      p2 <- dnbinom(x=trip_c2, size=x[6], mu=x[4], log = TRUE)
+      if(x[4]==0){
         p2 <- rep(0,length(p2))
       }
       options(warn=-1)
@@ -251,21 +319,28 @@ quadNBtest <- function(t1,t,n2,mu2_t,mu2_c,size2_t,size2_c){
       p <- exp(p)/sum(exp(p))
       
       
-      if (is.na(p[(t2[irow]+1)])){
+      if (is.na(p[x[1]+1])){
         pv <- NA
-      }else{  pv <- sum(p[which(p<=p[(t2[irow]+1)])])}
-      
-      pval[irow] <- pv
+      }else{  
+        if(one_side==TRUE){
+          pv <- sum(p[which(trip_t2>=x[1]+1)])
+        }else{
+          pv <- sum(p[which(p<=p[(x[1]+1)])])
+        }
+        
+        
+        
+      }
       
       
     }
+    return(pv)
     
   }
   
   
   
-  
-  res <- data.frame(pval)
+  res <- unlist(lapply(list_create,list_function)) 
   
   return(res)
   
@@ -274,156 +349,44 @@ quadNBtest <- function(t1,t,n2,mu2_t,mu2_c,size2_t,size2_c){
 
 
 
-## This is the sub function for SIGMRA_similarity_test function
 
-SIGMR_rep_test <-
-  function(meth_control,meth_test,unmeth_control,unmeth_test,
-           size.factor=NA,
-           plot.dispersion=FALSE,
-           output.dir = NA,
-           remove.false = TRUE) {
-    options(warn =-1)
-    meth_control <- data.frame(meth_control)
-    meth_test <- data.frame(meth_test)
-    unmeth_control <- data.frame(unmeth_control)
-    unmeth_test <- data.frame(unmeth_test)
-    # check
-    if( any( ncol(meth_control)!=ncol(unmeth_control), ncol(meth_test)!=ncol(unmeth_test)) ){
-      stop( "meth sample and unmeth sample must be the same replicates" )
-    }
-    if(  ncol(meth_control)<=1 ){
-      stop( "number of control sample must be larger than 1" )
-    }
-    if(  ncol(meth_test)<=1 ){
-      stop( "number of test sample must be larger than 1" )
-    }
-    # estimate
-    print("Estimating dispersion for each RNA methylation site, this will take a while ...")
+
+
+Estimate_dispersion <- function(data_meth,data_unmeth,mu_meth,mu_unmeth){
+  
+  if( any( ncol(data_meth)!=ncol(mu_meth), ncol(data_unmeth)!=ncol(mu_unmeth)) ){
+    stop( "data parameters and mu sparameters need to have same number of column" )
+  }
+  if( any( nrow(data_meth)!=nrow(data_unmeth), nrow(data_meth)!=nrow(mu_meth), 
+           nrow(mu_meth)!=nrow(mu_unmeth)) ){
+    stop( "four samples must have same number of sites" )
+  }
+  
+  dim1 <- dim(data_meth)[1]
+  dim2 <- dim(data_meth)[2]
+  dim3 <- dim(data_unmeth)[2]
+  
+  
+  meth_list <- as.list(as.data.frame(rbind(t(data_meth),t(mu_meth))))
+  unmeth_list <- as.list(as.data.frame(rbind(t(data_unmeth),t(mu_unmeth))))
+  
+  
+  
+  
+  function_estimate <- function(df)  {
+    function_loglikelihood <- function(alpha){
+      sum(dnbinom(df[1:dim2],mu=df[(1+dim2):(2*dim2)],size=alpha,log = TRUE),na.rm=TRUE)}
     
-    
-    
-    
-    meth<-cbind(meth_control,meth_test)
-    unmeth<-cbind(unmeth_control,unmeth_test)
-    if(anyNA(size.factor)){
-      s <-sizeFactor(cbind((meth_control+unmeth_control),(meth_test+unmeth_test)))
-      s_control <- s[1:length(meth_control[1,])]
-      s_test <- s[(length(meth_control[1,])+1):(length(cbind(meth_control,meth_test)[1,]))]
-    }else{
-      s_control <- size.factor$s_control
-      s_test <- size.factor$s_test
-    }
-    mean <-getBaseEstimate(meth_control,meth_test,unmeth_control,unmeth_test,s_control,s_test)
-    p0 <- mean[[1]]
-    p1 <- mean[[2]]
-    p2 <- mean[[3]]
-    q0 <- mean[[4]]
-    e1 <- mean[[5]]
-    e2 <- mean[[6]]
-    res <-baseFit(meth_control,unmeth_control,p1,q0,e1,s_control)
-    fit_meth_control<-res[[1]]
-    fit_unmeth_control<-res[[2]]
-    res <-baseFit(meth_test,unmeth_test,p2,q0,e2,s_test)
-    fit_meth_test<-res[[1]]
-    fit_unmeth_test<-res[[2]]
-    
-    
-    
-    if (is.na(output.dir)) {
-      output.dir <- getwd()
-    }
-    
-    path <- paste(output.dir,"dispersion.pdf",sep = '/')
-    if(plot.dispersion){
-      plotDispersion(fit_meth_control,fit_unmeth_control,path)
-      plotDispersion(fit_meth_test,fit_unmeth_test,path)
-    }
-    
-    
-    # calculate z
-    z_t1 <-calculateZ(q0,p1,s_control,e1)
-    z_t2 <-calculateZ(q0,p2,s_test,e2)
-    z_c1 <-calculateZ(q0,(1-p1),s_control,e1)
-    z_c2 <-calculateZ(q0,(1-p2),s_test,e2)
-    
-    # get estimate w
-    w_fit_meth_control <-fittedW(p0,q0,fit_meth_control)
-    w_fit_meth_test <-fittedW(p0,q0,fit_meth_test)
-    w_fit_unmeth_control <-fittedW(p0,q0,fit_unmeth_control)
-    w_fit_unmeth_test <-fittedW(p0,q0,fit_unmeth_test)
-    
-    # get estimate of upi
-    ups_t1 <- pmax(w_fit_meth_control - z_t1, 1e-8)
-    ups_t2 <- pmax(w_fit_meth_test - z_t2, 1e-8)
-    ups_c1 <- pmax(w_fit_unmeth_control - z_c1, 1e-8)
-    ups_c2 <- pmax(w_fit_unmeth_test - z_c2, 1e-8)
-    
-    # get all means
-    mu_t1 <- (e1*q0*p0)%*%t(as.numeric(s_control))
-    mu_t2 <- (e2*q0*p0)%*%t(as.numeric(s_test))
-    mu_c1 <- (e1*q0*(1-p0))%*%t(as.numeric(s_control))
-    mu_c2 <- (e2*q0*(1-p0))%*%t(as.numeric(s_test))
-    
-    # get all variance
-    raw_t1 <- (e1%*%t(s_control))^2*ups_t1
-    raw_t2 <- (e2%*%t(s_test))^2*ups_t2
-    raw_c1 <- (e1%*%t(s_control))^2*ups_c1
-    raw_c2 <- (e2%*%t(s_test))^2*ups_c2
-    
-    # put mu together
-    mu1_t <- rowSums(mu_t1)
-    mu2_t <- rowSums(mu_t2)
-    mu1_c <- rowSums(mu_c1)
-    mu2_c <- rowSums(mu_c2)
-    
-    # put size together
-    size1_t <- (mu1_t^2)/rowSums(raw_t1)
-    size2_t <- (mu2_t^2)/rowSums(raw_t2)
-    size1_c <- (mu1_c^2)/rowSums(raw_c1)
-    size2_c <- (mu2_c^2)/rowSums(raw_c2)
-    
-    # observation together
-    t1 <- rowSums(meth_control)
-    t2 <- rowSums(meth_test)
-    c1 <- rowSums(unmeth_control)
-    c2 <- rowSums(unmeth_test)
-    t <- t1 + t2
-    n1 <- t1 + c1
-    n2 <- t2 + c2
-    
-    raw <- (rowSums(raw_t1)+rowSums(raw_t2)+rowSums(raw_c1)+rowSums(raw_c2))/4
-    # go to test
-    res <-quadNBtest(t1,t,n2,mu_t2,mu_c2,
-                     size2_t,size2_c)
-    if (remove.false==TRUE){
-      index <- which(p2<=p1)
-      res[index,1] <- 1
-    }
-    
-    
-    
-    
-    
-    # add fc
-    
-    log2.RR <- log2(p2/p1)
-    
-    p.treated <- p2
-    p.control <- p1
-    
-    log2.OR <- log2((rowSums(t(t(meth_test)/s_test))/rowSums(t(t(unmeth_test)/s_test)))/
-                      (rowSums(t(t(meth_control)/s_control))/rowSums(t(t(unmeth_control)/s_control))))
-    m1 <- rowSums(t(t(meth_control)/s_control))
-    m2 <- rowSums(t(t(meth_test)/s_test))
-    u1 <- rowSums(t(t(unmeth_control)/s_control))
-    u2 <- rowSums(t(t(unmeth_test)/s_test))
-    mfc <- log2(m1)-log2(m2)
-    ufc <- log2(u1)-log2(u2)
-    
-    padj <- p.adjust( res[,1], method="BH" )
-    res <- data.frame(p.treated,p.control,log2.RR,log2.OR,res[,1],q0,padj)
-    colnames(res) <- c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-                       "log2 Odds Ratio","p value","aboundance","adjusted p value")
-    
-    
-    return(res)}
+    op <- optimise(function_loglikelihood,c(1e-10,1e5),maximum = TRUE)
+    op$maximum
+  }
+  
+  res <- list()
+  res[[1]] <- unlist(lapply(meth_list, function_estimate))
+  
+  res[[2]] <- unlist(lapply(unmeth_list, function_estimate))
+  
+  
+  return(res)
+  
+}

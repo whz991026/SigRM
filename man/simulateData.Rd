@@ -8,14 +8,14 @@ simulateData(
   n_Sites = 2000,
   test_num = 100,
   control_num = 300,
-  min_expression = 1,
+  min_expression = 0,
   max_expression = 4,
+  expression_p = 10,
   per_me = 1/2,
-  prange1 = c(0, 0.2),
-  p_s_1 = 0.01,
-  prange2 = c(0.25, 0.3),
-  prange3 = c(0, 0.3),
-  p_s_3 = 0.01
+  prange1 = c(0, 0.4),
+  prange2 = c(0.6, 0.8),
+  prange3 = c(0, 0.4),
+  shape2 = 10
 )
 }
 \arguments{
@@ -29,17 +29,17 @@ simulateData(
 
 \item{max_expression}{max expression for abundance}
 
+\item{expression_p}{expression parameter}
+
 \item{per_me}{percentage of difference}
 
 \item{prange1}{parameter for simulate p1}
-
-\item{p_s_1}{parameter for step of p1}
 
 \item{prange2}{parameter for simulate p2}
 
 \item{prange3}{parameter for simulate p3}
 
-\item{p_s_3}{parameter for step of p3}
+\item{shape2}{the hyper-parameter of the beta distribution}
 }
 \value{
 simulate read counts( meth read counts of control data,

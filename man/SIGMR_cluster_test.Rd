@@ -2,18 +2,7 @@
 % Please edit documentation in R/SIGMR_cluster_test.R
 \name{SIGMR_cluster_test}
 \alias{SIGMR_cluster_test}
-\title{This function serves as the central component for single-cell RNA methylation
-site analysis by clustering cells based on gene expression or read counts,
-encompassing both test and control groups. Before calling this function, it
-is essential to cluster the data. Ideally, each cluster comprises a mix of test
-and control cells. Within these clusters, control cell data serves as a
-reference, enabling the assessment of test cell behavior. This approach relies
-on control cells with similar gene expression patterns as a baseline for
-comparison. The method systematically evaluates the behavior of test cells
-within their clusters. However, if a cluster lacks control cells, you can
-either choose several of the most similar control cells for each test cell
-in the cluster (by calling the SIGMR_similarity_test()) or use all control
-cells as the background information.}
+\title{This is the main function if you know the cluster of the cells}
 \usage{
 SIGMR_cluster_test(
   meth_control,
@@ -24,12 +13,16 @@ SIGMR_cluster_test(
   cluster,
   similarity = FALSE,
   method = "Pearson",
-  num_test = 1,
   num_control = 3,
   size.factor = NA,
   plot.dispersion = FALSE,
   output.dir = NA,
-  remove.false = TRUE
+  remove.false = TRUE,
+  withq = TRUE,
+  method_dispersion = "unbiased_estimate",
+  adjust_1 = 1e-05,
+  adjust_2 = 0.01,
+  one_side = TRUE
 )
 }
 \arguments{
@@ -56,8 +49,6 @@ we use all control data or use similarity to choose some cells.}
 
 \item{method}{calculate similarity method}
 
-\item{num_test}{number of cells in the test group}
-
 \item{num_control}{number of cells in the control group (work for similarity)}
 
 \item{size.factor}{TRUE or FALSE (have size factor or not)}
@@ -67,10 +58,20 @@ we use all control data or use similarity to choose some cells.}
 \item{output.dir}{the path}
 
 \item{remove.false}{remove some false positive or not}
+
+\item{withq}{with the expression abundance or not}
+
+\item{method_dispersion}{the method to estimate the dispersion ("unbiased_estimate","mle","locfit")}
+
+\item{adjust_1}{adjust parameter for RR}
+
+\item{adjust_2}{adjust parameter for OR}
+
+\item{one_side}{p value is one side or both sides}
 }
 \value{
-a list  c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-"log2 Odds Ratio","p value","abundance","adjusted p value")
+a list c("methylation level treated","methylation level control","log2 Risk Ratio",
+"log2 Odds Ratio","p value","aboundance","adjusted p value","TCR")
 
 1.The first part of the list is the meth proportion data frame (row is gene
 and column is single cell) in the test cells.
@@ -81,17 +82,18 @@ and column is single cell) in the control cells.
 5.The fifth part of the list is the p value data frame for the test cells.
 6.The sixth part of the list is the estimated gene abundance data frame.
 7.The seventh part of the list is the adjusted p value data frame for the test cells.
+8.The eighth part of the list is the TCR for the test cells.
+
 For NA in the return list:
 \enumerate{
-\item NA in the treated detect proportion, it is caused by that the test cells have no reads
+\item NA in the treated methylation level, it is caused by that the test cells have no reads
 in both methylation reads and un methylation reads
-\item NA in the control detect proportion, it is caused by that the all control cells have
+\item NA in the control methylation level, it is caused by that the all control cells have
 no reads in both methylation reads and un methylation reads
-\item NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group,
-or the methylation proportion is 0 in both test cell and control group.
-\item NA in the odds ratio, is similar to the risk ratio
-\item NA in the p value, it is only caused by the that control detect proportion is NA and the
-treated detect proportion is not NA. If the treated detect proportion is NA the p-value is 1.
+\item NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group.
+\item NA in the TCR, is similar to the risk ratio.
+\item NA in the p value, it is only caused by the that control methylation level is NA and the
+treated methylation level is not NA.
 }
 }
 \description{

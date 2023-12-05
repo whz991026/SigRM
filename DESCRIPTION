@@ -18,10 +18,8 @@ Suggests:
     knitr,
     rmarkdown,
     pROC,
-    SC3,
-    SingleCellExperiment,
-    scater,
-    DESeq2
+    Seurat,
+    ggplot2
 VignetteBuilder: knitr
 URL: https://github.com/whz991026/SIGMR
 BugReports: https://github.com/whz991026/SIGMR/issues

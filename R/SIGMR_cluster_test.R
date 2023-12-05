@@ -1,4 +1,6 @@
-#' This function serves as the central component for single-cell RNA methylation
+#' This is the main function if you know the cluster of the cells
+#' 
+#' @description This function serves as the central component for single-cell RNA methylation
 #' site analysis by clustering cells based on gene expression or read counts,
 #' encompassing both test and control groups. Before calling this function, it
 #' is essential to cluster the data. Ideally, each cluster comprises a mix of test
@@ -27,15 +29,19 @@
 #' @param similarity TRUE or FALSE, if the cluster data do not have control data,
 #'                 we use all control data or use similarity to choose some cells.
 #' @param method calculate similarity method
-#' @param num_test number of cells in the test group
 #' @param num_control number of cells in the control group (work for similarity)
 #' @param size.factor TRUE or FALSE (have size factor or not)
 #' @param plot.dispersion whether plot or not
 #' @param output.dir the path
 #' @param remove.false remove some false positive or not
-#'
-#' @return a list  c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-#' "log2 Odds Ratio","p value","abundance","adjusted p value")
+#' @param withq with the expression abundance or not
+#' @param method_dispersion the method to estimate the dispersion ("unbiased_estimate","mle","locfit")
+#' @param adjust_1 adjust parameter for RR
+#' @param adjust_2 adjust parameter for OR
+#' @param one_side p value is one side or both sides
+#' 
+#' @return a list c("methylation level treated","methylation level control","log2 Risk Ratio",
+#' "log2 Odds Ratio","p value","aboundance","adjusted p value","TCR")
 #'
 #'  1.The first part of the list is the meth proportion data frame (row is gene
 #'  and column is single cell) in the test cells.
@@ -46,17 +52,18 @@
 #'  5.The fifth part of the list is the p value data frame for the test cells.
 #'  6.The sixth part of the list is the estimated gene abundance data frame.
 #'  7.The seventh part of the list is the adjusted p value data frame for the test cells.
+#'  8.The eighth part of the list is the TCR for the test cells.
+#'  
 #'  For NA in the return list:
 #'  
-#'  1. NA in the treated detect proportion, it is caused by that the test cells have no reads 
+#'  1. NA in the treated methylation level, it is caused by that the test cells have no reads 
 #'  in both methylation reads and un methylation reads
-#'  2. NA in the control detect proportion, it is caused by that the all control cells have 
+#'  2. NA in the control methylation level, it is caused by that the all control cells have 
 #'  no reads in both methylation reads and un methylation reads
-#'  3. NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group,
-#'   or the methylation proportion is 0 in both test cell and control group.
-#'  4. NA in the odds ratio, is similar to the risk ratio
-#'  5. NA in the p value, it is only caused by the that control detect proportion is NA and the 
-#'  treated detect proportion is not NA. If the treated detect proportion is NA the p-value is 1.
+#'  3. NA in the risk ratio, the methylation proportion is NA on the test cell or control cells group.
+#'  4. NA in the TCR, is similar to the risk ratio.
+#'  5. NA in the p value, it is only caused by the that control methylation level is NA and the 
+#'  treated methylation level is not NA.
 #' @export
 #'
 #'
@@ -111,12 +118,16 @@
 #'   expression=expression,similarity=TRUE)
 SIGMR_cluster_test <-
   function(meth_control,meth_test,unmeth_control,unmeth_test,expression=NA,
-           cluster,similarity=FALSE,method="Pearson",
-           num_test=1,num_control=3,
+           cluster,similarity=FALSE,method="Pearson",num_control=3,
            size.factor=NA,
            plot.dispersion=FALSE,
            output.dir = NA,
-           remove.false=TRUE
+           remove.false=TRUE,
+           withq=TRUE,
+           method_dispersion="unbiased_estimate",
+           adjust_1=1e-5,
+           adjust_2=1e-2,
+           one_side=TRUE
   ) {
     options(warn =-1)
     meth_control <- data.frame(meth_control)
@@ -135,213 +146,281 @@ SIGMR_cluster_test <-
     if(  ncol(meth_control)<=1 ){
       stop( "number of control sample must be larger than 1" )
     }
-
+    
     if(  length(expression)!=1){
       if (ncol(expression)!=(ncol(unmeth_control)+ncol(unmeth_test))){
         stop( "col of expression should be the same as the total number of the cells" )
       }
     }
-
+    
     if (length(cluster)!=dim(cbind(meth_control,meth_test))[2]){
       stop( "the length of the cluster should equal to the number of cells" )
+      
     }
-
-    # cluster
-
-
-
+    
+    meth<-cbind(meth_control,meth_test)
+    unmeth<-cbind(unmeth_control,unmeth_test)
+    if(anyNA(size.factor)){
+      s <-sizeFactor(cbind((meth_control+unmeth_control),(meth_test+unmeth_test)))
+      s_control <- s[1:length(meth_control[1,])]
+      s_test <- s[(length(meth_control[1,])+1):(length(cbind(meth_control,meth_test)[1,]))]
+    }else{
+      s_control <- size.factor$s_control
+      s_test <- size.factor$s_test
+    }
+    
+    # calculate q
+    
+    q <- estimateQ((meth_control+unmeth_control), (meth_test+unmeth_test),
+                   s_control,s_test)
+    
+    #SIGMR test
     l <-dim(meth_control)[2]
-
+    
     data1 <- meth_control+unmeth_control
     data2 <- meth_test+unmeth_test
     data <- cbind(data1,data2)
-
-
-    #SIGMR test
-
     # test set and control set
     control_set <- c(1:l)
     test_set <- c((l+1):dim(data)[2])
-
+    
     # find the intersection of the cluster and the test set and control set
-    index_data <- list()
-    index_test_data <- list()
-    index_control_data <- list()
-    index_null <- c()
-    for (i in 1:length(levels(cluster))){
-
-      index_data[[i]] <- which(cluster==levels(cluster)[i])
-      index_test_data [[i]] <- index_data [[i]][index_data[[i]]%in%test_set]
-      index_control_data [[i]] <- index_data [[i]][index_data[[i]]%in%control_set]
-
+    
+    
+    
+    
+    list_create <- as.list(1:length(levels(cluster)))
+    list_function <- function(x){
+      index_data <- which(cluster==levels(cluster)[x])
+      index_test_data  <- index_data [index_data%in%test_set]
+      index_control_data  <- index_data [index_data%in%control_set]
+      
       # check whether it contains the control group or not
-      if(length(index_control_data [[i]])<=1){
-        index_null <- c(index_null,i)
+      if(length(index_control_data )<=1){
+        index_null <- x
+      }else{
+        index_null <-NULL
       }
-
+      return(index_null)
     }
+    
+    index_null <- unlist(lapply(list_create,list_function))
+    
+    
+    
+    
     print(paste0("number of cluster without control group : ",length( index_null )))
-
+    
     # combine the test data without control data
     if(length(index_null)>1){
       levels_new <- levels(cluster)
       levels_new[index_null] <- "null"
       cluster_new <- cluster
       levels(cluster_new)<- levels_new
-
+      
       cluster <- cluster_new
       cluster[which(cluster=="null")[which(cluster=="null")%in%c(
         1:dim(meth_control)[2])]] <- "null_control"
-
+      
     }
-    index_data <- list()
-    index_test_data <- list()
-    index_control_data <- list()
-    index_null <- c()
-    for (i in 1:length(levels(cluster))){
-
-      index_data[[i]] <- which(cluster==levels(cluster)[i])
-      index_test_data [[i]] <- index_data [[i]][index_data[[i]]%in%test_set]
-      index_control_data [[i]] <- index_data [[i]][index_data[[i]]%in%control_set]
-
+    list_create <- as.list(1:length(levels(cluster)))
+    list_function1 <- function(x){
+      index_data <- which(cluster==levels(cluster)[x])
+      index_test_data  <- index_data [index_data%in%test_set]
+      index_control_data  <- index_data [index_data%in%control_set]
+      
       # check whether it contains the control group or not
-      if(length(index_control_data [[i]])<=1){
-
-
-
-        print("some test data have not enough control group,use the whole group")
-        index_null <- c(index_null,i)
-        print(paste0("the index is ",i))
-        index_control_data [[i]] <- control_set
-
-
-
+      if(length(index_control_data )<=1){
+        index_null <- x
+      }else{
+        index_null <-NULL
       }
-
-
+      return(index_test_data)
     }
-
-
-
+    
+    list_function2 <- function(x){
+      index_data <- which(cluster==levels(cluster)[x])
+      index_test_data  <- index_data [index_data%in%test_set]
+      index_control_data  <- index_data [index_data%in%control_set]
+      
+      # check whether it contains the control group or not
+      if(length(index_control_data )<=1){
+        index_null <- x
+        index_control_data <- control_set
+      }else{
+        index_null <-NULL
+      }
+      return(index_control_data)
+    }
+    
+    list_function3 <- function(x){
+      index_data <- which(cluster==levels(cluster)[x])
+      index_test_data  <- index_data [index_data%in%test_set]
+      index_control_data  <- index_data [index_data%in%control_set]
+      
+      # check whether it contains the control group or not
+      if(length(index_control_data )<=1){
+        index_null <- x
+      }else{
+        index_null <-NULL
+      }
+      return(index_null)
+    }
+    
+    
+    index_test_data <- lapply(list_create,list_function1)
+    index_control_data <- lapply(list_create,list_function2)
+    index_null <- unlist(lapply(list_create,list_function3))
+    
+    
+    
+    
     # get the order of the test cells
-    index_test <-c()
-    for (i in 1: length(index_test_data)){
-      index_test_ <- index_test_data [[i]]
-      index_test <-c(index_test,index_test_)
+    list_create <- as.list(1:length(index_test_data))
+    list_function <- function(x){
+      index_test <- index_test_data [[x]]
     }
-    index_test <- index_test -dim(meth_control)[2]
-
+    
+    index_test <- unlist(lapply(list_create,list_function))-dim(meth_control)[2]
+    
     # put into the SIGMRtest function or SIGMR_similarity_test function
     res_list <- list()
     meth <- cbind(meth_control,meth_test)
     unmeth <- cbind(unmeth_control,unmeth_test)
-
-
-
-    for ( i in 1: length(index_test_data)){
+    
+    
+    list_create <- as.list(1: length(index_test_data))
+    
+    list_function <- function(x) {
       # if the index_test_data is NA
-      if (length(index_test_data[[i]])==0){
-        res_list[[i]] <-list()
+      if (length(index_test_data[[x]])==0){
+        res_list <-NULL
       }else{
-
+        
         # if the test cells do not have control group we use similar cells from the control cells
-        if (i %in% index_null & similarity ==TRUE ){
+        if (x %in% index_null & similarity ==TRUE ){
           # if we have the expression we use expression to calculate the similarity
           if (length(expression)==1){
-            res_list[[i]] <- SIGMR_similarity_test(meth_control=meth[,
-                           index_control_data[[i]]],
-         meth_test=meth[,index_test_data[[i]]],
-         unmeth_control=unmeth[,index_control_data[[i]]],unmeth_test=
-           unmeth[,index_test_data[[i]]],
-         method=method, num_test=num_test,num_control=num_control,size.factor,
-         plot.dispersion, output.dir,
-         remove.false )
+            if(withq ==TRUE){
+              q <- q
+            } else {q <- FALSE}
+            res_list <- SIGMR_similarity_test(meth_control=meth[, index_control_data[[x]]],
+                                              meth_test=meth[,index_test_data[[x]]],
+                                              unmeth_control=unmeth[,index_control_data[[x]]],unmeth_test=
+                                                unmeth[,index_test_data[[x]]],
+                                              method=method,num_control=num_control,size.factor,
+                                              plot.dispersion, output.dir,
+                                              remove.false,q=q, method_dispersion=method_dispersion,adjust_1=adjust_1,
+                                              adjust_2=adjust_2,one_side=one_side)
           } else{
+            if(withq ==TRUE){
+              q <- q
+            } else {q <- FALSE}
             # if we do not have the expression we use read counts to calculate the similarity
-            res_list[[i]] <- SIGMR_similarity_test(meth_control=meth[,index_control_data[[i]]]
-           ,meth_test=meth[,index_test_data[[i]]],
-           unmeth_control=unmeth[,index_control_data[[i]]],unmeth_test=
-             unmeth[,index_test_data[[i]]],
-           expression=expression[,c(index_control_data[[i]],index_test_data[[i]])],
-           method=method, num_test=num_test,num_control=num_control,size.factor,
-           plot.dispersion, output.dir,
-           remove.false )
+            res_list<- SIGMR_similarity_test(meth_control=meth[,index_control_data[[x]]]
+                                             ,meth_test=meth[,index_test_data[[x]]],
+                                             unmeth_control=unmeth[,index_control_data[[x]]],unmeth_test=
+                                               unmeth[,index_test_data[[x]]],
+                                             expression=expression[,c(index_control_data[[x]],index_test_data[[x]])],
+                                             method=method,num_control=num_control,size.factor,
+                                             plot.dispersion, output.dir,
+                                             remove.false,q=q,method_dispersion=method_dispersion,adjust_1=adjust_1,
+                                             adjust_2=adjust_2 ,one_side=one_side)
           }
-
+          
         }else{
-          res_list[[i]] <- SIGMRtest(meth_control=meth[,index_control_data[[i]]]
-                                     ,meth_test=meth[,index_test_data[[i]]],
-                                     unmeth_control=unmeth[,index_control_data[[i]]],
-                                     unmeth_test=unmeth[,index_test_data[[i]]],
-                                     size.factor,     plot.dispersion, output.dir,
-                                     remove.false )
+          if(withq ==TRUE){
+            q <- q
+          } else {q <- FALSE}
+          res_list <- SIGMRtest(meth_control=meth[,index_control_data[[x]]]
+                                ,meth_test=meth[,index_test_data[[x]]],
+                                unmeth_control=unmeth[,index_control_data[[x]]],
+                                unmeth_test=unmeth[,index_test_data[[x]]],
+                                size.factor,     plot.dispersion, output.dir,
+                                remove.false,q=q ,method_dispersion=method_dispersion,adjust_1=adjust_1,
+                                adjust_2=adjust_2,one_side=one_side)
         }
-
+        
       }
-
+      return(res_list)
     }
-
-    res <- list()
-    for (i in c(1,3,4,5,7)){
-      res[[i]] <- as.data.frame(matrix(nrow = dim(meth_test)[1]))
-      for (j in 1: length(index_test_data)){
-
-        if (length(res_list[[j]])!=0){
-          res[[i]] <- cbind(res[[i]],res_list[[j]][[i]])
+    
+    res_list <-  lapply(list_create,list_function)
+    
+    
+    
+    
+    list_create <- as.list(c(1,3,4,5,7,8))
+    
+    list_function <- function(x) {
+      
+      list_create_ <- as.list(1: length(index_test_data))
+      
+      list_function_ <- function(y){
+        res <- res_list[[y]][[x]]
+      }
+      res <- lapply(list_create_,list_function_)
+      res <- as.data.frame(res[which(lapply(res,is.null)==FALSE)])
+      res <- res[, order(index_test)]
+      
+    }
+    
+    res1 <- lapply(list_create,list_function)
+    
+    
+    
+    
+    
+    
+    list_create <- as.list(c(2,6))
+    
+    list_function <- function(x) {
+      
+      list_create_ <- as.list(1: length(index_test_data))
+      
+      list_function_ <- function(y){
+        
+        if (is.null(res_list[[y]])){
+          res <- NULL
+        }else{
+          res <- matrix(rep(res_list[[y]][[x]],(dim(res_list[[y]][[1]])[2])),nrow=
+                          (dim(res_list[[y]][[1]])[1]),
+                        ncol=(dim(res_list[[y]][[1]])[2]))
         }
-
+        
       }
-      res[[i]]<-  res[[i]][, -1]
-      res[[i]]<- as.matrix( res[[i]])
-      res[[i]]<-  res[[i]][, order(index_test)]
-
-
+      res <- lapply(list_create_,list_function_)
+      res <- as.data.frame(res[which(lapply(res,is.null)==FALSE)])
+      res <- res[, order(index_test)]
+      
     }
-
-
-
-
-
-    for (i in c(2,6)){
-      res[[i]] <- as.data.frame(matrix(nrow = dim(meth_test)[1]))
-      for (j in 1: length(index_test_data)){
-
-        if (length(res_list[[j]])!=0){
-          a <- matrix(rep(res_list[[j]][[i]],(dim(res_list[[j]][[1]])[2])),nrow=
-                        (dim(res_list[[j]][[1]])[1]),
-                      ncol=(dim(res_list[[j]][[1]])[2]))
-
-          res[[i]] <- cbind(res[[i]],a)
-        }
-
+    
+    res2 <- lapply(list_create,list_function)
+    
+    
+    res <- c(res1,res2)[order(c(1,3,4,5,7,8,2,6))]
+    
+    
+    
+    list_create <- as.list(1: length(res))
+    list_function <- function(x) {
+      if(is.null(dim(res[[x]])[2])){
+      }else{
+        colnames(res[[x]]) <- paste0("cell_",(1:dim(res[[x]])[2]))
       }
-      res[[i]]<-  res[[i]][, -1]
-      res[[i]]<- as.matrix( res[[i]])
-      res[[i]]<-  res[[i]][, order(index_test)]
-
-
+      return(res[[x]])
     }
-
-
-    for (i in 1: length(res)){
-      res[[i]] <- data.frame(res[[i]])
-      colnames(res[[i]]) <- paste0("cell_",(1:dim(res[[i]])[2]))
-    }
-    res_final <-list()
-    res_final [[1]] <- res[[1]]
-    res_final [[2]] <- res[[2]]
-    res_final [[3]] <- res[[3]]
-    res_final [[4]] <- res[[4]]
-    res_final [[5]] <- res[[5]]
-    res_final [[6]] <- res[[6]]
-    res_final [[7]] <- res[[7]]
-
-
-    names(res_final )<- c("detect proportion treated","detect proportion control","log2 Risk Ratio",
-                          "log2 Odds Ratio","p value","aboundance","adjusted p value")
-
+    
+    
+    res_final <- lapply(list_create,list_function)
+    
+    
+    names(res_final )<- c("detect proportion treated","detect proportion control",
+                          "log2 Risk Ratio","log2 Odds Ratio","p value","aboundance",
+                          "adjusted p value","TCR")
+    
     return(res_final )
-
-
-
+    
+    
+    
   }
