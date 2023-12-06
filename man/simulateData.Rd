@@ -15,7 +15,7 @@ simulateData(
   prange1 = c(0, 0.4),
   prange2 = c(0.6, 0.8),
   prange3 = c(0, 0.4),
-  shape2 = 10
+  shape2 = 5
 )
 }
 \arguments{

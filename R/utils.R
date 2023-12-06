@@ -8,12 +8,7 @@
 #' @importFrom stats dnbinom
 ## get size factor function.
 
-rowMeans_function <- function(data){
-  l <- apply(data,1,function(x)length(which(x!=0)))
-  mean_value <- rowSums(data)/l
-  mean_value [which(l==0)] <- 0
-  mean_value
-}
+
 sizeFactor <- function(data) {
   # make the elements no smaller than 0
   data <- as.matrix(data)
@@ -41,7 +36,7 @@ estimateP <- function(meth, unmeth, size) {
 
 estimateQ <- function(total_control,total_test,s_control,s_test){
   temp <- t(t(cbind(total_control,total_test))/c(s_control,s_test))
-  q <- rowMeans_function(temp)
+  q <- rowMeans(temp)
   return(q)
 }
 
@@ -49,7 +44,7 @@ estimateQ <- function(total_control,total_test,s_control,s_test){
 
 estimateE <- function(meth,unmeth,size,q){
   
-  e <- rowMeans_function(t(t(meth+unmeth)/size))/q
+  e <- rowMeans(t(t(meth+unmeth)/size))/q
   return(e)
 }
 
@@ -58,7 +53,7 @@ estimateE <- function(meth,unmeth,size,q){
 calculate_v <- function(data,size,e){
   
   q <-  t(t(data)/size)/e
-  q <- q-rowMeans_function(q)
+  q <- q-rowMeans(q)
   v <- rowSums(q^2)/(length(size)-1)
   v <- as.matrix(v)
   return(v)
