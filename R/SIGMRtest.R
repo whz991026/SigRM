@@ -93,8 +93,7 @@ SIGMRtest <-
     if(  ncol(meth_control)<=1 ){
       stop( "number of control sample must be larger than 1" )
     }
-    # estimate
-    print("Estimating dispersion for each RNA methylation site, this will take a while ...")
+    
 
     meth<-cbind(meth_control,meth_test)
     unmeth<-cbind(unmeth_control,unmeth_test)
