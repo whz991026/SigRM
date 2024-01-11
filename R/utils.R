@@ -16,7 +16,7 @@ sizeFactor <- function(data) {
   # first log
   log_data <- log(data)
   log_data[is.infinite(log_data)] <- NA
-  log_mean <- rowMeans(log_data)
+  log_mean <- rowMeans(log_data,na.rm=TRUE)
   log_s <- log_data-log_mean
   
   # then exp

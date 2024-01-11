@@ -68,6 +68,10 @@ quantification_level <- function(meth_control,meth_test,unmeth_control,unmeth_te
     s_test <- size.factor$s_test
   }
   
+  if(  any(is.na(s_control)) | any(is.na(s_test))){
+    stop( "size factor contains NA" )
+  }
+  
   if (length(q)==1){
     mean <-getEstimate(meth_control,meth_test,unmeth_control,unmeth_test,s_control,s_test)
     p0 <- mean[[1]]
