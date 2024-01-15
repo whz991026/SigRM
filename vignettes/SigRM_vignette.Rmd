@@ -1,13 +1,13 @@
 ---
-title: "<center> SIGMR Vignette </center>"
+title: "<center> SigRM Vignette </center>"
 output: 
   rmarkdown::html_vignette:
     toc: true
     toc_depth: 3
 abstract: |
-  The SIGMR package introduces an innovative statistical approach, employing a similarity-guided multi-resolution analysis for precise m6A modification site detection within DART-seq data. This specialized toolkit, consisting of three pivotal functions, empowers researchers to explore single-cell RNA methylation sites comprehensively. SIGMRtest delves deep into m6A modifications at the individual cell level. SIGMR_similarity_test facilitates control group selection based on test cell similarity, with customizable control cell numbers. Lastly, SIGMR_cluster_test is essential for clustering cells based on gene expression or read counts, seamlessly accommodating both test and control groups. This method relies on control cells with similar gene expression patterns for comparison, systematically evaluating test cell behavior. The SIGMR package enhances the accuracy of methylation site results derived from DART-seq data, offering researchers tools. For inquiries, contact Haozhe.Wang17@student.xjtlu.edu.cn. The accompanying document provides an introduction to using the SIGMR package, including a quick start guide, performance comparisons with the original method, and evaluation of clustering or selecting similar expression cells as control cells. It also outlines using the KS test when site labels are unavailable.\n <center> **Table of content** </center>
+  The SigRM package introduces an innovative statistical approach, employing a similarity-guided multi-resolution analysis for precise m6A modification site detection within DART-seq data. This specialized toolkit, consisting of three pivotal functions, empowers researchers to explore single-cell RNA methylation sites comprehensively. SigRMtest delves deep into m6A modifications at the individual cell level. SigRM_similarity_test facilitates control group selection based on test cell similarity, with customizable control cell numbers. Lastly, SigRM_cluster_test is essential for clustering cells based on gene expression or read counts, seamlessly accommodating both test and control groups. This method relies on control cells with similar gene expression patterns for comparison, systematically evaluating test cell behavior. The SigRM package enhances the accuracy of methylation site results derived from DART-seq data, offering researchers tools. For inquiries, contact Haozhe.Wang17@student.xjtlu.edu.cn. The accompanying document provides an introduction to using the SigRM package, including a quick start guide, performance comparisons with the original method, and evaluation of clustering or selecting similar expression cells as control cells. It also outlines using the KS test when site labels are unavailable.\n <center> **Table of content** </center>
 vignette: >
-  % \VignetteIndexEntry{SIGMR_vignette}
+  % \VignetteIndexEntry{SigRM_vignette}
   % \VignetteEngine{knitr::rmarkdown}
   % \VignetteEncoding{UTF-8}
   % \VignetteDepends{pROC} 
@@ -28,15 +28,15 @@ knitr::opts_chunk$set(fig.width=6, fig.height=4,
 
 # Install the package
 
-At the beginning, we need to install the SIGMR package and some other packages required for this R Markdown file.
+At the beginning, we need to install the SigRM package and some other packages required for this R Markdown file.
 
-## Install our package SIGMR
+## Install our package SigRM
 ```{r setup}
 # install.packages("devtools")
 # library("devtools")
-# install_github("whz991026/SIGMR")
+# install_github("whz991026/SigRM")
 
-library(SIGMR)
+library(SigRM)
 ```
 
 
@@ -69,9 +69,9 @@ library(ggplot2)
 
 # Quick start
 
-It demonstrates how to utilize the main function, SIGMRtest(), from the SIGMR package. The primary input for the SIGMRtest function is a matrix or data frame containing four sets of read counts, where rows represent genes, and columns represent single cells. These four sets of read counts are ordered as follows: methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group. This data can be obtained by calling the simulateData() function.
+It demonstrates how to utilize the main function, SigRMtest(), from the SigRM package. The primary input for the SigRMtest function is a matrix or data frame containing four sets of read counts, where rows represent genes, and columns represent single cells. These four sets of read counts are ordered as follows: methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group. This data can be obtained by calling the simulateData() function.
 
-The output of the SIGMRtest function is a list with a length of 7:
+The output of the SigRMtest function is a list with a length of 7:
 
 * The first part consists of a data frame representing methylation proportions (with rows for genes and columns for single cells) in the test cells.
 * The second part comprises a mean methylation proportion vector (with rows for genes and columns for single cells) in the control cells.
@@ -86,8 +86,8 @@ The output of the SIGMRtest function is a list with a length of 7:
 set.seed(1)
 # first simulate the data
 data <- simulateData(test_num = 10,control_num = 30)
-# put into the main function SIGMRtest
-res <- SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
+# put into the main function SigRMtest
+res <- SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]])
 
 # meth proportion data frame (row is gene and column is single cell) in the test cells. 
 head(res[[1]])
@@ -114,15 +114,15 @@ head(res[[7]])
 
 # Simulation Part
 
-This section involves simulating data and evaluating the performance of the SIGMR model compared to the original method. It also includes testing the performance of the SIGMR_cluster_test() or SIGMR_similarity_test() and SIGMRtest() functions to determine whether selecting control cells based on the similarity of their expression profiles yields superior results.
+This section involves simulating data and evaluating the performance of the SigRM model compared to the original method. It also includes testing the performance of the SigRM_cluster_test() or SigRM_similarity_test() and SigRMtest() functions to determine whether selecting control cells based on the similarity of their expression profiles yields superior results.
 
 For the simulation data:
 
 * There are 1000 sites.
-* The dataset comprises 300 control cells and 500 test cells.
+* The dataset comprises 300 control cells and 10 test cells.
 * The logarithm of $q_{ij}$ follows a uniform distribution.
 * The detection level $p_{ij}$ also follows a uniform distribution.
-* For 50% of the background sites, the detection levels follow a beta distribution and the mean level is (0, 0.4), while the corresponding test data follow a $U(0.5, 0.8)$ distribution.
+* For 50% of the background sites, the detection levels follow a beta distribution and the mean level is (0, 0.4), while the corresponding test data follow a $U(0.6, 1)$ distribution.
 * For the remaining sites, their detection levels are similar, following a a beta distribution and the mean level is (0, 0.4). 
 
 By the way, the simulateData() function is responsible for generating the dataset, as before, and provides an output list containing methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group.
@@ -310,104 +310,16 @@ TPR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
 ```
 
 
-### Ratio plot function
-
-ratio_plot(): This function is used to create ratio plots for risk ratio or odds ratio calculations.
-```{r,results=FALSE, include=FALSE,echo=FALSE}
-
-ratio_plot <- function(x,idx1,idx2,threeshold){
-  index <- c()
-  index <- which(x[[5]][,idx1]<=threeshold)
-  
-  label <- rep("F",dim(x[[5]])[1])
-  label[index] <- "T"
-  
-  data <- data.frame(x[[idx2]][,idx1],x[[6]],label)
-  colnames(data) <- c("ratio","q","label")
-  
- 
- 
-  
-  if (idx2==3){
-    
-    plot_test <-  ggplot(data)+geom_point(aes(q,ratio,color=label))+
-    scale_color_manual(values=c("black","#FF4500"))+
-       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("risk ratio")+
-      ggtitle("Plot of SIGMR result of risk ratio for simulation")+xlab("expression")+
-      theme(plot.title = element_text(hjust = 0.5)) 
-  }else if (idx2==4){
-   
-    
-    plot_test <- ggplot(data)+geom_point(aes(q,ratio,color=label))+
-    scale_color_manual(values=c("black","#FF4500"))+
-       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("odds ratio")+
-       ggtitle("Plot of SIGMR result of odds ratio for simulation")+xlab("expression")+
-      theme(plot.title = element_text(hjust = 0.5)) 
-  } else{
-     plot_test <- ggplot(data)+geom_point(aes(q,ratio,color=label))+
-    scale_color_manual(values=c("black","#FF4500"))+
-       geom_hline(aes(yintercept=0),colour="red",linetype="dashed")+ylab("TCR")+
-       ggtitle("Plot of SIGMR result of tcr TCR simulation")+xlab("expression")+
-      theme(plot.title = element_text(hjust = 0.5)) 
-  }
-
-
-
-    
-  return (plot_test)
-}
-
-
-ratio_plot2 <- function(x,idx1,idx2,threeshold,base=10){
-  index <- c()
-  index <- which(x[[5]][,idx1]<=threeshold)
-  
-  label <- rep("F",dim(x[[5]])[1])
-  label[index] <- "T"
-  
-  data <- data.frame(x[[idx2]][,idx1],-log(x[[5]][,idx1],base=base),label)
-  colnames(data) <- c("ratio","p_value","label")
-  
- 
- 
-  
-  if (idx2==3){
-    
-    plot_test <-  ggplot(data)+geom_point(aes(ratio,p_value,color=label))+
-    scale_color_manual(values=c("black","#FF4500"))+ylab("-log p value")+
-      ggtitle("Plot of SIGMR result of risk ratio for simulation")+xlab("log 2 risk ratio")+
-      theme(plot.title = element_text(hjust = 0.5)) 
-  }else if(idx2==4){
-   
-    
-        plot_test <-  ggplot(data)+geom_point(aes(ratio,p_value,color=label))+
-    scale_color_manual(values=c("black","#FF4500"))+ylab("-log p value")+
-      ggtitle("Plot of SIGMR result of odds ratio for simulation")+xlab("log 2 odds ratio")+
-      theme(plot.title = element_text(hjust = 0.5))
-  } else{
-    plot_test <-  ggplot(data)+geom_point(aes(ratio,p_value,color=label))+
-    scale_color_manual(values=c("black","#FF4500"))+ylab("-log p value")+
-      ggtitle("Plot of SIGMR result of TCR for simulation")+xlab("TCR")+
-      theme(plot.title = element_text(hjust = 0.5))
-  }
-
-
-
-    
-  return (plot_test)
-}
-```
-
 
 
 ### test_function()
-In the following, test_function() is the function used to simulate data and obtain results from the SIGMR, 10x, and SMART models. Since the 10x and SMART methods can only determine whether sites are m6A or not, whereas the SIGMR provides p-values, we establish a threshold to ensure that the number of m6A sites detected by SIGMR matches that of 10x or SMART for a fair comparison. We then evaluate and compare the performance based on AUC, FDR, and TPR. The output of test_function() is a list with seven components:
+In the following, test_function() is the function used to simulate data and obtain results from the SigRM, 10x, and SMART models. Since the 10x and SMART methods can only determine whether sites are m6A or not, whereas the SigRM provides p-values, we establish a threshold to ensure that the number of m6A sites detected by SigRM matches that of 10x or SMART for a fair comparison. We then evaluate and compare the performance based on AUC, FDR, and TPR. The output of test_function() is a list with seven components:
 
 * AUC results for each method.
 * FDR results for each method.
 * TPR results for each method.
 * Simulated data.
-* Results obtained from SIGMR.
+* Results obtained from SigRM.
 * Results from the 10x method.
 * Results from the SMART method."
 
@@ -431,7 +343,7 @@ data <- simulateData(n_Sites = n_Sites,test_num = test_num,control_num = control
 
 # test
 
-res1 = SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]],method_dispersion = "locfit")
+res1 = SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]],method_dispersion = "locfit")
 res2 = single_test_10x(data[[1]],data[[2]],data[[3]],data[[4]])
 res3 = single_test_SMART(data[[1]],data[[2]],data[[3]],data[[4]])
 
@@ -482,7 +394,7 @@ fdr_single_SMART <- unlist(lapply(test_results_SMART,function(df)df[,2]))
 TPR_single_SMART <- unlist(lapply(test_results_SMART,function(df)df[,3]))
 
 
-# SIGMR
+# SigRM
 list_create <- as.list( 1 : length(res2) )
 list_function <- function (x) {
   l1 <- length(res2[[x]])
@@ -494,36 +406,36 @@ list_function <- function (x) {
 
   p2 <-rep(1,length(res1[[5]][,x])) 
   p2[which(res1[[5]][,x] <=threshold1) ] <-0 
-  auc_SIGMR_10x<- auc(roc(label,p2))
-  fdr_SIGMR_10x<-FDR_function(per_me,n_Sites,p2,threshold=threshold1)
-  TPR_SIGMR_10x<-TPR_function(per_me,n_Sites,p2,threshold=threshold1)
+  auc_SigRM_10x<- auc(roc(label,p2))
+  fdr_SigRM_10x<-FDR_function(per_me,n_Sites,p2,threshold=threshold1)
+  TPR_SigRM_10x<-TPR_function(per_me,n_Sites,p2,threshold=threshold1)
   
   p2 <-rep(1,length(res1[[5]][,x])) 
   p2[which(res1[[5]][,x] <=threshold2) ] <-0 
-  auc_SIGMR_SMART <- auc(roc(label,p2))
-  fdr_SIGMR_SMART<-FDR_function(per_me,n_Sites,p2,threshold=threshold2)
-  TPR_SIGMR_SMART<-TPR_function(per_me,n_Sites,p2,threshold=threshold2)
+  auc_SigRM_SMART <- auc(roc(label,p2))
+  fdr_SigRM_SMART<-FDR_function(per_me,n_Sites,p2,threshold=threshold2)
+  TPR_SigRM_SMART<-TPR_function(per_me,n_Sites,p2,threshold=threshold2)
   
-  return(cbind(auc_SIGMR_10x,fdr_SIGMR_10x,TPR_SIGMR_10x,
-               auc_SIGMR_SMART,fdr_SIGMR_SMART,TPR_SIGMR_SMART))
+  return(cbind(auc_SigRM_10x,fdr_SigRM_10x,TPR_SigRM_10x,
+               auc_SigRM_SMART,fdr_SigRM_SMART,TPR_SigRM_SMART))
 }
-test_results_SIGMR  <- lapply(list_create,list_function)
-auc_SIGMR_10x <- unlist(lapply(test_results_SIGMR,function(df)df[,1]))
-fdr_SIGMR_10x <- unlist(lapply(test_results_SIGMR,function(df)df[,2]))
-TPR_SIGMR_10x <- unlist(lapply(test_results_SIGMR,function(df)df[,3]))
-auc_SIGMR_SMART <- unlist(lapply(test_results_SIGMR,function(df)df[,4]))
-fdr_SIGMR_SMART <- unlist(lapply(test_results_SIGMR,function(df)df[,5]))
-TPR_SIGMR_SMART <- unlist(lapply(test_results_SIGMR,function(df)df[,6]))
+test_results_SigRM  <- lapply(list_create,list_function)
+auc_SigRM_10x <- unlist(lapply(test_results_SigRM,function(df)df[,1]))
+fdr_SigRM_10x <- unlist(lapply(test_results_SigRM,function(df)df[,2]))
+TPR_SigRM_10x <- unlist(lapply(test_results_SigRM,function(df)df[,3]))
+auc_SigRM_SMART <- unlist(lapply(test_results_SigRM,function(df)df[,4]))
+fdr_SigRM_SMART <- unlist(lapply(test_results_SigRM,function(df)df[,5]))
+TPR_SigRM_SMART <- unlist(lapply(test_results_SigRM,function(df)df[,6]))
 
 # set table
-auc_table <- cbind(c(auc_SIGMR_10x,auc_SIGMR_SMART,auc_single_10x,auc_single_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+auc_table <- cbind(c(auc_SigRM_10x,auc_SigRM_SMART,auc_single_10x,auc_single_SMART),
+                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
 
-fdr_table <- cbind(c(fdr_SIGMR_10x,fdr_SIGMR_SMART,fdr_single_10x,fdr_single_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+fdr_table <- cbind(c(fdr_SigRM_10x,fdr_SigRM_SMART,fdr_single_10x,fdr_single_SMART),
+                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
 
-TPR_table <- cbind(c(TPR_SIGMR_10x,TPR_SIGMR_SMART,TPR_single_10x,TPR_single_SMART),
-                   c(rep("SIGMR_10x",length(res2)),rep("SIGMR_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+TPR_table <- cbind(c(TPR_SigRM_10x,TPR_SigRM_SMART,TPR_single_10x,TPR_single_SMART),
+                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
 
 # return list
 list_return <- list()
@@ -546,7 +458,7 @@ return(list_return)
 
 ## Compare origion methods
 
-This section involves comparing the performance of the SIGMR model with the original method by invoking the test_function().
+This section involves comparing the performance of the SigRM model with the original method by invoking the test_function().
 ```{r,include=FALSE}
 set.seed(1)
 
@@ -582,12 +494,12 @@ TPR_metric $TPR <-as.numeric(TPR_metric$TPR)
 ### Visualization the results
 Visualizing the results of the comparison of performance: AUC, FDR, and TPR.
 
-The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SIGMR output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SIGMR and these methods.
+The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SigRM output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SigRM and these methods.
 
-* In the AUC plot, it is evident that the AUC of SIGMR_10x surpasses that of 10x, and the AUC of SIGMR_SMART outperforms SMART.
-* Regarding the FDR plot, it's clear that the FDR of SIGMR_10x is lower than that of 10x, and the FDR of SIGMR_SMART is lower than SMART.
-* In the TPR plot, we observe that the TPR of SIGMR_10x is superior to that of 10x, and the TPR of SIGMR_SMART excels compared to SMART.
-* For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SIGMR results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SIGMR does not detect any sites with a log odds ratio or log risk ratio below 0.
+* In the AUC plot, it is evident that the AUC of SigRM_10x surpasses that of 10x, and the AUC of SigRM_SMART outperforms SMART.
+* Regarding the FDR plot, it's clear that the FDR of SigRM_10x is lower than that of 10x, and the FDR of SigRM_SMART is lower than SMART.
+* In the TPR plot, we observe that the TPR of SigRM_10x is superior to that of 10x, and the TPR of SigRM_SMART excels compared to SMART.
+* For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SigRM results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SigRM does not detect any sites with a log odds ratio or log risk ratio below 0.
 
 
 ```{r,results='hold',echo=FALSE}
@@ -623,15 +535,6 @@ ggplot(TPR_metric, aes( y=(TPR),fill=method,x=method)) +
   stat_summary(fun.data = give.median2, geom = "text", fun = median)
 
 
-res = metric[[5]]
-
-ratio_plot(res,1,3,0.05)
-ratio_plot(res,1,4,0.05)
-ratio_plot(res,1,8,0.05)
-ratio_plot2(res,1,3,0.05)
-ratio_plot2(res,1,4,0.05)
-ratio_plot2(res,1,8,0.05)
-
 
 
 ```
@@ -640,10 +543,10 @@ ratio_plot2(res,1,8,0.05)
 We aim to apply a clustering method in which cells with similar gene expression are grouped together. For the test cells, this method not only employs all control cells but also selects control cells with similar gene expression as the control group. We utilize the Seurat clustering method.
 
 
-### SIGMR_cluster_test function
-Before comparing the performance of SIGMR_cluster_test() and SIGMRtest(), let's explore how to use the SIGMR_cluster_test() function. The primary input for the SIGMR_cluster_test function is the same as for the SIGMRtest function: a four read counts matrix or data frame where rows represent genes and columns represent single cells. Additionally, it requires a factor variable named 'cluster variable,' indicating that you must cluster the cells before calling the SIGMR_cluster_test function. For details on other parameters, please refer to the help page.
+### SigRM_cluster_test function
+Before comparing the performance of SigRM_cluster_test() and SigRMtest(), let's explore how to use the SigRM_cluster_test() function. The primary input for the SigRM_cluster_test function is the same as for the SigRMtest function: a four read counts matrix or data frame where rows represent genes and columns represent single cells. Additionally, it requires a factor variable named 'cluster variable,' indicating that you must cluster the cells before calling the SigRM_cluster_test function. For details on other parameters, please refer to the help page.
 
-The outputs of the SIGMR_cluster_test function also consist of a list with a length of 7. The key differences between the outputs of the SIGMR_cluster_test function and the SIGMRtest function are found in elements 2 and 6 of the list:
+The outputs of the SigRM_cluster_test function also consist of a list with a length of 7. The key differences between the outputs of the SigRM_cluster_test function and the SigRMtest function are found in elements 2 and 6 of the list:
 
 * The second part contains the mean methylation proportion data frame of the control group.
 * The sixth part includes the estimated abundance data frame.
@@ -705,9 +608,9 @@ cluster <- Idents(pbmc)
 
 
 
-### call the SIGMR_cluster_test() function
+### call the SigRM_cluster_test() function
 ```{r}
-res <- SIGMR_cluster_test(data[[1]],data[[2]],data[[3]],data[[4]],cluster = cluster)
+res <- SigRM_cluster_test(data[[1]],data[[2]],data[[3]],data[[4]],cluster = cluster)
 
 # meth proportion data frame (row is gene and column is single cell) in the test cells. 
 head(res[[1]])
@@ -739,11 +642,11 @@ head(res[[7]])
 ## similarity
 The cluster method may result in clusters that do not contain any control cells, leaving the test cells without a control group. In such cases, we can employ control cells with the most similar gene expression.
 
-### SIGMR_similarity_test function
+### SigRM_similarity_test function
 
-Let's take a look at how to use the SIGMR_similarity_test() function. The primary input for the SIGMR_similarity_test() function is the same as that for the SIGMRtest function: a four read counts matrix or data frame where rows represent genes and columns represent single cells. The 'methods' parameter is set to the default "Pearson," but it can also be customized from the vector c("Euclidean distance," "Manhattan distance," "Maximum distance," "Pearson," "Spearman").The 'num_cluster' parameter determines how many similar cells are selected from the control cells to form the control group.
+Let's take a look at how to use the SigRM_similarity_test() function. The primary input for the SigRM_similarity_test() function is the same as that for the SigRMtest function: a four read counts matrix or data frame where rows represent genes and columns represent single cells. The 'methods' parameter is set to the default "Pearson," but it can also be customized from the vector c("Euclidean distance," "Manhattan distance," "Maximum distance," "Pearson," "Spearman").The 'num_cluster' parameter determines how many similar cells are selected from the control cells to form the control group.
 
-Regarding the outputs, they are identical to those of the SIGMR_cluster_test function.
+Regarding the outputs, they are identical to those of the SigRM_cluster_test function.
 
 These revisions should make the text clearer and more grammatically sound.
 
@@ -751,7 +654,7 @@ These revisions should make the text clearer and more grammatically sound.
 
 set.seed(1)
 data <- simulateData(test_num = 10,control_num = 30)
-res = SIGMR_similarity_test(data[[1]],data[[2]],data[[3]],data[[4]],
+res = SigRM_similarity_test(data[[1]],data[[2]],data[[3]],data[[4]],
             method="Pearson",num_control=10)
 
 
