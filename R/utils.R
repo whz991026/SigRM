@@ -13,14 +13,15 @@ sizeFactor <- function(data) {
   # make the elements no smaller than 0
   data <- as.matrix(data)
   
-  data <- pmax(data,1e-5)
+  
   # first log
   log_data <- log(data)
-  log_mean <- rowMeans(log_data)
+  log_data [is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data,na.rm=TRUE)
   log_s <- log_data-log_mean
   
   # then exp
-  s_size <- exp(apply(log_s,2,function(x)median(x)))
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
   return(s_size)
 }
 
