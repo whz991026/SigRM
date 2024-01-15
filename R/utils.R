@@ -13,14 +13,14 @@ sizeFactor <- function(data) {
   # make the elements no smaller than 0
   data <- as.matrix(data)
   
+  data <- pmax(data,1e-5)
   # first log
   log_data <- log(data)
-  log_data[is.infinite(log_data)] <- NA
-  log_mean <- rowMeans(log_data,na.rm=TRUE)
+  log_mean <- rowMeans(log_data)
   log_s <- log_data-log_mean
   
   # then exp
-  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  s_size <- exp(apply(log_s,2,function(x)median(x)))
   return(s_size)
 }
 
@@ -318,7 +318,7 @@ quadNBtest <- function(t2,n2,mu2_t,mu2_c,size2_t,size2_c,one_side=TRUE){
         pv <- NA
       }else{  
         if(one_side==TRUE){
-          pv <- sum(p[which(trip_t2>=x[1]+1)])
+          pv <- sum(p[which(trip_t2>=x[1])])
         }else{
           pv <- sum(p[which(p<=p[(x[1]+1)])])
         }

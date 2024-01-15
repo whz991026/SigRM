@@ -1,4 +1,4 @@
-Package: SIGMR
+Package: SigRM
 Title: similarity-guided single cell RNA methylation analysis from DART-seq data
 Version: 1.0
 Authors@R: 
@@ -6,7 +6,7 @@ Authors@R:
     person("Jia", "Meng", , "Jia.Meng@xjtlu.edu.cn", role = c("ctb", "ths")),
     person("Yue", "Wang", , "Yue.Wang@student.xjtlu.edu.cn", role = c("ctb", "ths")))
 Description: 
-    The SIGMR package presents a novel statistical approach, utilizing a similarity-guided multi-resolution analysis for the detection of modification sites in DART-seq data. Specifically designed for discerning m6A modification sites, SIGMR relies on four independent negative binomial distributions, with linked variances and means through local regressions. This comprehensive toolkit comprises three pivotal functions. Firstly, SIGMRtest serves as the cornerstone for analyzing single-cell RNA methylation sites, providing a deep dive into the intricacies of m6A modifications within individual cells. Secondly, SIGMR_similarity_test assumes a central role in this analysis, enabling the selection of control groups based on the similarity of each test cell. Users have the flexibility to customize the number of control cells. Lastly, SIGMR_cluster_test is essential for clustering cells based on gene expression or read counts, accommodating both test and control groups seamlessly. Effective utilization of this function necessitates prior data clustering, with each cluster ideally embodying a mix of test and control cells, enabling a comprehensive assessment of test cell behavior. This innovative approach relies on control cells with similar gene expression patterns as a baseline for comparison, systematically evaluating test cell behavior within their respective clusters. The SIGMR package equips researchers with tools to enhance the accuracy of methylation site results derived from DART-seq data. For any inquiries, please do not hesitate to contact Haozhe.Wang17@student.xjtlu.edu.cn.
+    The SigRM package presents a novel statistical approach, utilizing a similarity-guided multi-resolution analysis for the detection of modification sites in DART-seq data. Specifically designed for discerning m6A modification sites, SigRM relies on four independent negative binomial distributions, with linked variances and means through local regressions. This comprehensive toolkit comprises three pivotal functions. Firstly, SigRMtest serves as the cornerstone for analyzing single-cell RNA methylation sites, providing a deep dive into the intricacies of m6A modifications within individual cells. Secondly, SigRM_similarity_test assumes a central role in this analysis, enabling the selection of control groups based on the similarity of each test cell. Users have the flexibility to customize the number of control cells. Lastly, SigRM_cluster_test is essential for clustering cells based on gene expression or read counts, accommodating both test and control groups seamlessly. Effective utilization of this function necessitates prior data clustering, with each cluster ideally embodying a mix of test and control cells, enabling a comprehensive assessment of test cell behavior. This innovative approach relies on control cells with similar gene expression patterns as a baseline for comparison, systematically evaluating test cell behavior within their respective clusters. The SigRM package equips researchers with tools to enhance the accuracy of methylation site results derived from DART-seq data. For any inquiries, please do not hesitate to contact Haozhe.Wang17@student.xjtlu.edu.cn.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -21,5 +21,5 @@ Suggests:
     Seurat,
     ggplot2
 VignetteBuilder: knitr
-URL: https://github.com/whz991026/SIGMR
-BugReports: https://github.com/whz991026/SIGMR/issues
+URL: https://github.com/whz991026/SigRM
+BugReports: https://github.com/whz991026/SigRM/issues

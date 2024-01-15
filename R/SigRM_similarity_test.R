@@ -1,4 +1,4 @@
-#' This is the function work for the SIGMR_cluster_test
+#' This is the function work for the SigRM_cluster_test
 #' 
 #' @description This function serves as the central component for single-cell RNA methylation
 #' site analysis by selecting the control group based on the similarity of each
@@ -65,18 +65,18 @@
 #'   meth_control=data[[1]];meth_test=data[[2]];unmeth_control=data[[3]];unmeth_test=data[[4]]
 #'
 #'   # use Pearson
-#'   res1 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res1 <- SigRM_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   method="Pearson",num_control=3,size.factor=NA,plot.dispersion=FALSE,
 #'   output.dir = NA,remove.false = TRUE)
 #'
 #'   # use Euclidean distance
-#'   res2 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res2 <- SigRM_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   method="Euclidean distance",num_control=3,size.factor=NA,
 #'   plot.dispersion=FALSE,   output.dir = NA,remove.false = TRUE)
 #'
 #'  # use expression and Euclidean distance
 #'  expression <- matrix (runif(31000,0,1),nrow=1000,ncol=31)
-#'  res3<- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'  res3<- SigRM_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'  expression=expression,method="Euclidean distance",num_control=3,
 #'  size.factor=NA,plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 #'
@@ -87,12 +87,12 @@
 #'   meth_control=data[[1]];meth_test=data[[2]];unmeth_control=data[[3]];unmeth_test=data[[4]]
 #'
 #'   # use Pearson
-#'   res1 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res1 <- SigRM_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   method="Pearson",num_control=3,size.factor=NA,plot.dispersion=FALSE,
 #'   output.dir = NA,remove.false = TRUE)
 #'
 #'   # use Euclidean distance
-#'   res2 <- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res2 <- SigRM_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   method="Euclidean distance",num_control=3,size.factor=NA,
 #'   plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 #'
@@ -100,11 +100,11 @@
 #'
 #'  # use expression and Euclidean distance
 #'  expression <- matrix (runif(37000,0,1),nrow=1000,ncol=37)
-#'  res5<- SIGMR_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'  res5<- SigRM_similarity_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'  expression=expression,method="Euclidean distance",num_control=3,
 #'  size.factor=NA,plot.dispersion=FALSE, output.dir = NA,remove.false = TRUE)
 #'
-SIGMR_similarity_test <-
+SigRM_similarity_test <-
   function(meth_control,meth_test,unmeth_control,unmeth_test,expression=NA,
            method="Pearson",
            num_control,
@@ -222,12 +222,12 @@ SIGMR_similarity_test <-
       
       similarity_index <- as.data.frame(lapply(list_create,list_function))
       
-      # SIGMRtest
+      # SigRMtest
       
       list_create <- as.list(1: l_test)
       
       list_function <- function(x){
-        res <- SIGMRtest(meth_control[,similarity_index[1:num_control,x]],
+        res <- SigRMtest(meth_control[,similarity_index[1:num_control,x]],
                          meth_test[,x],
                          unmeth_control[,similarity_index[1:num_control,x]],unmeth_test[,x],
                          size.factor=NA,plot.dispersion=FALSE,output.dir = NA,
@@ -254,11 +254,11 @@ SIGMR_similarity_test <-
       
       similarity_index <- as.data.frame(lapply(list_create,list_function))
       
-      # SIGMRtest
+      # SigRMtest
       list_create <- as.list(1: l_test)
       
       list_function <- function(x){
-        res <- SIGMRtest(meth_control[,similarity_index[1:num_control,x]],
+        res <- SigRMtest(meth_control[,similarity_index[1:num_control,x]],
                          meth_test[,x],
                          unmeth_control[,similarity_index[1:num_control,x]],unmeth_test[,x],
                          size.factor=NA,plot.dispersion=FALSE,output.dir = NA,

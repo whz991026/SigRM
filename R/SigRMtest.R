@@ -57,14 +57,14 @@
 #'   data <- simulateData (test_num=1,control_num=30)
 #'
 #'
-#'   res <- SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
+#'   res <- SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]])
 #'
 #'   data <- simulateData (test_num=2,control_num=30)
 #'
 #'
-#'   res <- SIGMRtest(data[[1]],data[[2]],data[[3]],data[[4]])
+#'   res <- SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]])
 #'
-SIGMRtest <-
+SigRMtest <-
   function(meth_control,meth_test,unmeth_control,unmeth_test,
            size.factor=NA,
            plot.dispersion=FALSE,
@@ -375,6 +375,7 @@ SIGMRtest <-
     TCR <- p.treated-p.control
     
     TCR <- data.frame(TCR)
+    
     
     p.treated <- data.frame(p.treated)
     colnames(p.treated) <- paste0("cell_",(1:dim(p.treated)[2]))

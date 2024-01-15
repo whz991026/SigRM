@@ -10,7 +10,7 @@
 #'  comparison. The method systematically evaluates the behavior of test cells
 #'  within their clusters. However, if a cluster lacks control cells, you can
 #'  either choose several of the most similar control cells for each test cell
-#'  in the cluster (by calling the SIGMR_similarity_test()) or use all control
+#'  in the cluster (by calling the SigRM_similarity_test()) or use all control
 #'  cells as the background information.
 #'
 #'
@@ -79,16 +79,16 @@
 #'   cluster <-factor(sample (1:num_cluster,dim(data1)[2],replace = TRUE))
 #'
 #'   # cluster with similarity=FALSE
-#'   res1 <- SIGMR_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res1 <- SigRM_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   cluster=cluster)
 #'
 #'   # cluster with similarity=TRUE
-#'   res2 <- SIGMR_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res2 <- SigRM_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   cluster=cluster,similarity=TRUE)
 #'
 #'   # cluster with expression
 #'   expression <- matrix (runif(31000,0,1),nrow=1000,ncol=31)
-#'   res3 <- SIGMR_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res3 <- SigRM_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   cluster=cluster,expression=expression,similarity=TRUE)
 #'
 #'
@@ -104,19 +104,19 @@
 #'   cluster <-factor(sample (1:num_cluster,dim(data1)[2],replace = TRUE))
 #'
 #'   # cluster with similarity=FALSE
-#'   res1 <- SIGMR_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res1 <- SigRM_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   cluster=cluster)
 #'
 #'   # cluster with similarity=TRUE
-#'   res2 <- SIGMR_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res2 <- SigRM_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   cluster=cluster,similarity=TRUE)
 #'
 #'   # cluster with expression
 #'   expression <- matrix (runif(32000,0,1),nrow=1000,ncol=32)
-#'   res3 <- SIGMR_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
+#'   res3 <- SigRM_cluster_test(meth_control,meth_test,unmeth_control,unmeth_test,
 #'   cluster=cluster,
 #'   expression=expression,similarity=TRUE)
-SIGMR_cluster_test <-
+SigRM_cluster_test <-
   function(meth_control,meth_test,unmeth_control,unmeth_test,expression=NA,
            cluster,similarity=FALSE,method="Pearson",num_control=3,
            size.factor=NA,
@@ -174,7 +174,7 @@ SIGMR_cluster_test <-
     q <- estimateQ((meth_control+unmeth_control), (meth_test+unmeth_test),
                    s_control,s_test)
     
-    #SIGMR test
+    #SigRM test
     l <-dim(meth_control)[2]
     
     data1 <- meth_control+unmeth_control
@@ -283,7 +283,7 @@ SIGMR_cluster_test <-
     
     index_test <- unlist(lapply(list_create,list_function))-dim(meth_control)[2]
     
-    # put into the SIGMRtest function or SIGMR_similarity_test function
+    # put into the SigRMtest function or SigRM_similarity_test function
     res_list <- list()
     meth <- cbind(meth_control,meth_test)
     unmeth <- cbind(unmeth_control,unmeth_test)
@@ -304,7 +304,7 @@ SIGMR_cluster_test <-
             if(withq ==TRUE){
               q <- q
             } else {q <- FALSE}
-            res_list <- SIGMR_similarity_test(meth_control=meth[, index_control_data[[x]]],
+            res_list <- SigRM_similarity_test(meth_control=meth[, index_control_data[[x]]],
                                               meth_test=meth[,index_test_data[[x]]],
                                               unmeth_control=unmeth[,index_control_data[[x]]],unmeth_test=
                                                 unmeth[,index_test_data[[x]]],
@@ -317,7 +317,7 @@ SIGMR_cluster_test <-
               q <- q
             } else {q <- FALSE}
             # if we do not have the expression we use read counts to calculate the similarity
-            res_list<- SIGMR_similarity_test(meth_control=meth[,index_control_data[[x]]]
+            res_list<- SigRM_similarity_test(meth_control=meth[,index_control_data[[x]]]
                                              ,meth_test=meth[,index_test_data[[x]]],
                                              unmeth_control=unmeth[,index_control_data[[x]]],unmeth_test=
                                                unmeth[,index_test_data[[x]]],
@@ -332,7 +332,7 @@ SIGMR_cluster_test <-
           if(withq ==TRUE){
             q <- q
           } else {q <- FALSE}
-          res_list <- SIGMRtest(meth_control=meth[,index_control_data[[x]]]
+          res_list <- SigRMtest(meth_control=meth[,index_control_data[[x]]]
                                 ,meth_test=meth[,index_test_data[[x]]],
                                 unmeth_control=unmeth[,index_control_data[[x]]],
                                 unmeth_test=unmeth[,index_test_data[[x]]],
