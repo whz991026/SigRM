@@ -319,7 +319,7 @@ quadNBtest <- function(t2,n2,mu2_t,mu2_c,size2_t,size2_c,one_side=TRUE){
         pv <- NA
       }else{  
         if(one_side==TRUE){
-          pv <- sum(p[which(trip_t2>=x[1])])
+          pv <- sum(p[intersect(which(trip_t2>=x[1]),which(p<=p[(x[1]+1)]))])
         }else{
           pv <- sum(p[which(p<=p[(x[1]+1)])])
         }
