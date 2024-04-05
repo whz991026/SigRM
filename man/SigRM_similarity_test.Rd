@@ -17,7 +17,7 @@ SigRM_similarity_test(
   output.dir = NA,
   remove.false = TRUE,
   q = NA,
-  method_dispersion = "unbiased_estimate",
+  method_dispersion = "locfit",
   adjust_1 = 1e-05,
   adjust_2 = 0.01,
   one_side = TRUE
