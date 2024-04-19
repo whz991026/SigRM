@@ -4,27 +4,8 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-The SigRM package presents a novel statistical approach, utilizing a 
-    similarity-guided multi-resolution analysis for the detection of modification 
-    sites in DART-seq data. Specifically designed for discerning m6A modification 
-    sites, SigRM relies on four independent negative binomial distributions, with 
-    linked variances and means through local regressions. This comprehensive toolkit 
-    comprises three pivotal functions. Firstly, SigRMtest serves as the cornerstone 
-    for analyzing single-cell RNA methylation sites, providing a deep dive into the 
-    intricacies of m6A modifications within individual cells. Secondly, 
-    SigRM_similarity_test assumes a central role in this analysis, enabling the 
-    selection of control groups based on the similarity of each test cell. Users 
-    have the flexibility to customize the number of control cells. Lastly, 
-    SigRM_cluster_test is essential for clustering cells based on gene expression 
-    or read counts, accommodating both test and control groups seamlessly. 
-    Effective utilization of this function necessitates prior data clustering, 
-    with each cluster ideally embodying a mix of test and control cells, enabling 
-    a comprehensive assessment of test cell behavior. This innovative approach 
-    relies on control cells with similar gene expression patterns as a baseline 
-    for comparison, systematically evaluating test cell behavior within their 
-    respective clusters. The SigRM package equips researchers with powerful tools 
-    to enhance the accuracy of methylation site results derived from DART-seq data. 
-    For any inquiries, please do not hesitate to contact Haozhe.Wang17@student.xjtlu.edu.cn.
+The SigRM package, a novel statistical framework for the effective mining of single-cell epitranscriptomics datasets comprised of a very large number of cells.   Specifically designed for discerning m6A modification sites, SigRM relies on four independent negative binomial distributions, with linked variances and means through local regressions.   This comprehensive toolkit comprises three pivotal functions.   Firstly, SigRMtest serves as the cornerstone for analyzing single-cell RNA methylation sites, providing a deep dive into the intricacies of m6A modifications within individual cells.   Secondly, SigRM_similarity_test assumes a central role in this analysis, enabling the selection of control groups based on the similarity of each test cell.   Users have the flexibility to customize the number of control cells.   Lastly, SigRM_cluster_test is essential for clustering cells based on gene expression or read counts, accommodating both test and control groups seamlessly.   Effective utilization of this function necessitates prior data clustering, with each cluster ideally embodying a mix of test and control cells, enabling a comprehensive assessment of test cell behavior.   This innovative approach relies on control cells with similar gene expression patterns as a baseline for comparison, systematically evaluating test cell behavior within their respective clusters.   SigRM not only achieved improved performance in RNA methylation site detection compared to generic and state-of-the-art models, but also provided a rigorous quantification of the RNA methylation level that facilitate various forms of downstream analysis.  For any inquiries, please do not hesitate to contact Haozhe.Wang17@student.xjtlu.edu.cn.
+
 
 ## Installation
 
@@ -33,8 +14,6 @@ You can install the development version of SigRM from [GitHub](https://github.co
 ``` r
 # install.packages("devtools")
 devtools::install_github("whz991026/SigRM")
-# if you want to build with vignette
-# devtools::install_github("whz991026/SigRM",build_vignettes = TRUE)
 ```
 
 ## Example
