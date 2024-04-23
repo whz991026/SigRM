@@ -20,11 +20,11 @@
 #' @export
 #'
 #' @examples
-#'  data <- simulateData (test_num=10,control_num=30)
+#'  data <- simulateData (n_Sites=100,test_num=10,control_num=30)
 #'
 #'
-simulateData <- function(n_Sites=2000,test_num=100,control_num=300,min_expression=0,max_expression=4,
-         expression_p=10,per_me=1/2,prange1=c(0,0.4),prange2=c(0.6,0.8),
+simulateData <- function(n_Sites=5000,test_num=100,control_num=100,min_expression=0,max_expression=4,
+         expression_p=10,per_me=1/2,prange1=c(0,0.4),prange2=c(0.6,0.9),
          prange3=c(0,0.4),shape2=5){
   # Base expression
   q1 <- matrix(expression_p^runif(n_Sites*control_num,min_expression,max_expression),

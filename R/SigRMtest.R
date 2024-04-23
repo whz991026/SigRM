@@ -54,12 +54,12 @@
 #' @export
 #'
 #' @examples
-#'   data <- simulateData (test_num=1,control_num=30)
+#'   data <- simulateData (n_Sites=100,test_num=1,control_num=30)
 #'
 #'
 #'   res <- SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]])
 #'
-#'   data <- simulateData (test_num=2,control_num=30)
+#'   data <- simulateData (n_Sites=100,test_num=2,control_num=30)
 #'
 #'
 #'   res <- SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]])

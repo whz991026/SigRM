@@ -19,7 +19,11 @@ Suggests:
     rmarkdown,
     pROC,
     Seurat,
-    ggplot2
+    ggplot2,
+    DESeq2,
+    edgeR,
+    latex2exp,
+    statmod
 VignetteBuilder: knitr
 URL: https://github.com/whz991026/SigRM
 BugReports: https://github.com/whz991026/SigRM/issues

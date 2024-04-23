@@ -69,7 +69,7 @@
 #'
 #' @examples
 #'   set.seed(1)
-#'   data <- simulateData (test_num=1,control_num=30)
+#'   data <- simulateData (n_Sites=100,test_num=1,control_num=30)
 #'
 #'   meth_control=data[[1]];meth_test=data[[2]];unmeth_control=data[[3]];unmeth_test=data[[4]]
 #'
@@ -94,7 +94,7 @@
 #'
 #'
 #'
-#'   data <- simulateData (test_num=2,control_num=30)
+#'   data <- simulateData (n_Sites=100,test_num=2,control_num=30)
 #'
 #'   meth_control=data[[1]];meth_test=data[[2]];unmeth_control=data[[3]];unmeth_test=data[[4]]
 #'

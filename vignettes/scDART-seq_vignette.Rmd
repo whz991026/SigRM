@@ -1,0 +1,4192 @@
+---
+title: "scDART-seq_vignette"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+abstract: |
+      This is the vignette to show the analysis on the scDART-seq data.You can not direct run the code. This is just provide for reading the process of the coding step by step.\n <center> **Table of content** </center>
+vignette: >
+  % \VignetteIndexEntry{scDART-seq_vignette}
+  % \VignetteEngine{knitr::rmarkdown}
+  % \VignetteEncoding{UTF-8}
+  % \VignetteDepends{pROC} 
+  % \VignetteDepends{Seurat} 
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+#library(SigRM)
+```
+
+
+# the data can be access from:
+https://drive.google.com/drive/folders/1D137_357nuVYkxYiwcxH8dNyKsEbYrUv?usp=sharing
+SNP is the information of the 510,554 sites. frequency_all_processed contains the methylationreads counts and unmethylation reads counts for 510,554 sites and 1382 cells (YTH is the test cell, YTHmut is the control cells). expression_TPM is the TPM of the 1382 cells.
+
+# Extraction of m6A signals from scDART-seq data 
+The raw data was directly downloaded from GEO and aligned to hg38 reference genome using hisat2. The candidate m6A sites (corresponding to mutated C within the DRACH motifs) were detected using Samtools (default setting). The m6A and non-modification signals (number of mutated and unmutated sequences with respect to each candidate sites) were counted using GenomicAlignments R package. The Information of a total of 2371331 sites was extracted for 1382 cells, including 991 testing cells and 391 negative control which has mutated YTH domain. We excluded sites with an unexpected error rate exceeding 1% and a median read count below 10, resulting in 510,554 retained candidate m6A sites, which was utilized for the subsequent real data analysis and methodology tests.
+
+
+```{r,eval=FALSE}
+###########################################################
+####                         scDART_seq                ####
+###########################################################
+# data download
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE180954 
+
+# alignment
+(nohup trim_galore --paired -o /home/share/bowen/scDART/data/YTHcell_',i,' /home/share/bowen/scDART/data/YTHcell_',i,'/',sra,'_1.fastq',' /home/share/bowen/scDART/data/YTHcell_',i,'/',sra,'_2.fastq)&
+  
+(nohup STAR --runThreadN 10 --runMode genomeGenerate --genomeDir /home/share/bowen/genome/hg38/star_indx/ --genomeFastaFiles /home/share/bowen/genome/hg38/Homo_sapiens.GRCh38.dna.primary_assembly.fa --sjdbGTFfile /home/share/bowen/genome/hg38/Homo_sapiens.GRCh38.109.gtf --sjdbOverhang 150 > /home/share/bowen/genome/hg38/star_indx/build_index.out)&   
+
+(nohup STAR --runThreadN 10 --outSAMtype BAM Unsorted --readFilesIn /home/share/bowen/scDART/data/YTHcell_1/SRR15268889_1_val_1.fq /home/share/bowen/scDART/data/YTHcell_1/SRR15268889_2_val_2.fq --genomeDir /home/share/bowen/genome/hg38/star_indx --sjdbGTFfile /home/share/bowen/genome/hg38/Homo_sapiens.GRCh38.109.gtf --outFileNamePrefix /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889 --outSAMattributes All --outSAMunmapped Within --sjdbOverhang 150 > /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889.log)& 
+  
+(nohup STAR --runThreadN 10 --outSAMtype BAM Unsorted --readFilesIn /home/share/bowen/scDART/data/YTHmutcell_1/SRR15268462_1_val_1.fq /home/share/bowen/scDART/data/YTHmutcell_1/SRR15268462_2_val_2.fq --genomeDir /home/share/bowen/genome/hg38/star_indx --sjdbGTFfile /home/share/bowen/genome/hg38/Homo_sapiens.GRCh38.109.gtf --outFileNamePrefix /home/share/bowen/scDART/data/YTHmutcell_1/bam/SRR15268462 --outSAMattributes All --outSAMunmapped Within --sjdbOverhang 150 > /home/share/bowen/scDART/data/YTHmutcell_1/bam/SRR15268462.log)&  
+
+# variant calling
+samtools sort -o /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889_sorted.bam /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889Aligned.out.bam
+
+bcftools mpileup -f /home/share/bowen/genome/hg38/Homo_sapiens.GRCh38.dna.primary_assembly.fa /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889_sorted.bam | bcftools call -mv -Oz -o /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889_calls.vcf 
+
+# find relevant mutation
+data <- read.vcfR(SRR15268889_calls.vcf)
+
+data2 <- as.data.frame(data@fix)
+
+indx <- which(data2$REF == 'A' | data2$REF == 'G' | data2$REF == 'C' | data2$REF == 'T')
+
+data2 <- data2[indx,]
+
+indx <- which(data2$ALT == 'A' | data2$ALT == 'G' | data2$ALT == 'C' | data2$ALT == 'T')
+
+data2 <- data2[indx,]
+
+gr <- GRanges(seqnames = paste0('chr',data2$CHROM),
+              IRanges(start = as.numeric(data2$POS),
+                      width = 1),
+              strand = '+',
+              ref = data2$REF,
+              alt = data2$ALT,
+              quality = as.numeric(data2$QUAL),
+              info = data2$INFO)
+
+gr <- keepStandardChromosomes(gr,pruning.mode = "coarse")
+
+ref <- as.character(DNAStringSet(Views(Hsapiens,gr)))
+
+indx <- which(gr$ref != ref)
+
+if(length(indx) != 0){
+  gr <- gr[-indx]
+}
+  
+saveRDS(gr,'/home/share/bowen/scDART/data/YTHcell_1/bam/SNP.rds')  
+  
+# filter mutation
+transcript <- transcripts(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+transcript_plus <- transcript[which(strand(transcript)== "+")]
+
+transcript_minus <- transcript[which(strand(transcript)== "-")]
+
+gr <- readRDS('/home/share/bowen/scDART/data/YTHcell_1/bam/SNP.rds')
+
+gr_all <- GRanges()
+
+# 1.	Coordinate在 (+) strand: ACX
+gr_plus <- gr
+olp <- findOverlaps(gr_plus,transcript_plus)
+q <- queryHits(olp)
+s <- subjectHits(olp)
+gr_plus <- gr_plus[q]
+gr_plus$transcript_overlapped <- transcript_plus[s]$tx_name
+gr_plus$transcript_strand <- '+'
+gr_plus <- unique(gr_plus)
+
+gr_plus$seq <- as.character(DNAStringSet(Views(Hsapiens,gr_plus+1)))
+indx <- which(gr_plus$seq == 'ACA'|gr_plus$seq == 'ACG'|gr_plus$seq == 'ACC'|gr_plus$seq == 'ACT')
+gr_plus <- gr_plus[indx]
+indx <- which(gr_plus$alt == 'T')
+gr_plus <- gr_plus[indx]
+gr_plus$sample <- list3[i]
+
+# 2.	Coordinate在 (-) strand: XGT
+gr_minus <- gr
+strand(gr_minus) <- '-'
+
+olp <- findOverlaps(gr_minus,transcript_minus)
+q <- queryHits(olp)
+s <- subjectHits(olp)
+gr_minus <- gr_minus[q]
+gr_minus$transcript_overlapped <- transcript_minus[s]$tx_name
+gr_minus$transcript_strand <- '-'
+gr_minus <- unique(gr_minus)
+
+strand(gr_minus) <- '+'
+gr_minus$seq <- as.character(DNAStringSet(Views(Hsapiens,gr_minus+1)))
+indx <- which(gr_minus$seq == 'AGT'|gr_minus$seq == 'CGT'|gr_minus$seq == 'GGT'|gr_minus$seq == 'TGT')
+gr_minus <- gr_minus[indx]
+indx <- which(gr_minus$alt == 'A')
+gr_minus <- gr_minus[indx]
+gr_minus$sample <- list3[i]
+
+gr <- c(gr_plus,gr_minus)
+saveRDS(gr,paste0(list2[i],'SNP_filtered.rds'))
+gr_all <- unique(c(gr_all,gr))
+saveRDS(gr_all,'/home/share/bowen/scDART/testSNP_all.rds')
+
+## coverage
+bamfilePath <- '/home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889_sorted.bam'
+
+flag <- scanBamFlag(isNotPassingQualityControls=FALSE,
+                    isDuplicate=FALSE)
+
+param <- ScanBamParam(flag=flag, what=c("seq","qual"),which=gr_all)
+
+alns <- readGAlignments(bamfilePath, param=param)
+
+alns <- keepStandardChromosomes(alns,pruning.mode = "coarse")
+
+qseq <- mcols(alns)$seq
+
+qual <- mcols(alns)$qual
+
+seqlevels(alns) <- seqlevels(gr_all)
+
+nucl_piles <- pileLettersAt(qseq, seqnames(alns), start(alns),
+                            cigar(alns), gr_all)
+
+frequency <- alphabetFrequency(nucl_piles, baseOnly=TRUE)
+
+# gene expression
+stringtie /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889_sorted.bam -G /home/share/bowen/genome/hg38/Homo_sapiens.GRCh38.109.gtf -e -A /home/share/bowen/scDART/data/YTHcell_1/bam/gene_abund.tab
+
+
+```
+
+# Pre-process
+We get 3 objects, one is the frequency of A,C,T,g,and other, the others are the gene expression and SNP.
+
+
+
+
+
+There are two data:
+
+* frequency_all is the data contains the read counts of the A C G T and others for each sites and cell (row means sites, column means cell)
+* testSNP_all is the data contains the information of the SNP for each sites and cells
+
+Combine them to get the methylated reads count and unmethylated reads count. Strand_plus(T is methylated reads count, C is unmethylated reads count).Strand_minus(A is methylated reads count, G is unmethylated reads count). The rest are the error reads count.
+```{r,eval=FALSE}
+
+
+frequency_all <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_2/origin/frequency_all.rds")
+
+
+testSNP_all <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_2/origin/SNP_all_7374.rds")
+
+
+
+#Combine the frequency_all and testSNP_all
+In the following, I put the information of the strand and the seq information from testSNP_all data into the frequency_all data. Base on that, I calculate the number of methylation reads, unmethylation reads, total reads, error rate. I also put this information into the frequency_all data and delete the not important information.
+
+
+
+#library(dplyr)
+# get the number of cell number of sites
+
+num_cell <- length(frequency_all)
+num_sites <- length(testSNP_all)
+
+# get the index of the + - STAND 
+
+strand <- testSNP_all$transcript_strand
+strand_plus <- which(strand=="+")
+strand_minus <- which(strand=="-")
+
+error_rate_list <- list()
+
+error_reads_list <- list()
+
+site_length_nomatch <-  which(lapply(frequency_all, function(x) dim(x)[1])!=length(testSNP_all))
+
+
+for (i in setdiff((1:num_cell),site_length_nomatch)){
+  
+  # change to data frame and add strand column
+  
+  frequency_all[[i]] <-  data.frame(frequency_all[[i]])
+  
+  # get methylated reads 
+  
+  methylated_reads <- rep(0, num_sites)
+  methylated_reads[strand_plus] <- frequency_all[[i]][strand_plus,4]
+  methylated_reads[strand_minus] <-frequency_all[[i]][strand_minus,1]
+  
+  # get unmethylated reads 
+  
+  unmethylated_reads <- rep(0, num_sites)
+  unmethylated_reads[strand_plus] <- frequency_all[[i]][strand_plus,2]
+  unmethylated_reads[strand_minus] <- frequency_all[[i]][strand_minus,3]
+  
+  
+ 
+  # get error reads 
+  
+  error_reads <- rep(0, num_sites)
+  error_reads[strand_plus] <- frequency_all[[i]][strand_plus,1]+frequency_all[[i]][strand_plus,3]+
+                              frequency_all[[i]][strand_plus,5]
+  error_reads[strand_minus] <- frequency_all[[i]][strand_minus,2]+frequency_all[[i]][strand_minus,4]+
+                              frequency_all[[i]][strand_minus,5]
+  
+  
+  
+    frequency_all[[i]] <- frequency_all[[i]] %>% 
+    mutate(methylated_reads=methylated_reads)%>% 
+    mutate(unmethylated_reads=unmethylated_reads)%>%
+    mutate(error_reads=error_reads)%>% 
+     select(methylated_reads,unmethylated_reads,error_reads)
+ 
+  error_reads_list[[i]] <-  frequency_all[[i]]$error_reads
+  
+#   frequency_all[[i]] <- frequency_all[[i]] %>% 
+#    mutate(methylated_reads=methylated_reads)%>% 
+#    mutate(unmethylated_reads=unmethylated_reads)%>%
+#    mutate(error_rate=error_reads/(methylated_reads+unmethylated_reads+error_reads))%>% 
+#     select(methylated_reads,unmethylated_reads,error_rate)
+ 
+#  error_rate_list[[i]] <-  frequency_all[[i]]$error_rate
+  frequency_all[[i]] <- frequency_all[[i]] %>% select(methylated_reads,unmethylated_reads)
+}
+
+if (length(site_length_nomatch)==0){
+}else{
+  
+  frequency_all <- frequency_all[-site_length_nomatch]
+  error_reads_list <- error_reads_list[-site_length_nomatch]
+  #error_rate_list <- error_rate_list[-site_length_nomatch]
+
+
+}
+
+
+setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_2/preprocess1")
+saveRDS(error_rate_list,"error_rate_list.rds")
+saveRDS(frequency_all,"reads_counts.rds")
+saveRDS(error_reads_list,"error_reads.rds")
+```
+
+After that we will get a reads counts for methylated and unmethylated reads and the error rate. we discard the error rate>= 0.1 and median of frequency <=10. This will retain 510,554 sites.
+```{r,eval=FALSE}
+
+
+
+#library(ggplot2)
+methylation_rate <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/methylation_rate.rds")
+
+discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
+methylation_rate <- methylation_rate[-discard_cell]
+num_controlcell <- length(which(grepl("YTHmutcell",names(methylation_rate))))
+num_testcell <- length(which(grepl("YTHcell",names(methylation_rate))))
+
+
+set.seed(10)
+index_control <- sample(which(grepl("YTHmutcell",names(methylation_rate))),3)
+index_test <- sample(which(grepl("YTHmutcell",names(methylation_rate))),3)
+# see the density of the methylation_rate from control cell and test cell
+
+
+# see the histogram of the number of the sites methylation rate >=0.5
+methylation_rate_high_num <- as.numeric(lapply(methylation_rate, function(x) length(which(x>=0.3))))
+
+data_methylation_rate_high_num <- data.frame(cbind(methylation_rate_high_num,c(rep("control",num_controlcell),rep("test",num_testcell))))
+
+colnames(data_methylation_rate_high_num) <- c("num","group")
+data_methylation_rate_high_num$num <- as.numeric(data_methylation_rate_high_num$num)
+
+ggplot() +
+  geom_histogram(data=data_methylation_rate_high_num[1:num_controlcell,],alpha=0.8, aes(x=num,y=after_stat(density)),bins=100, fill="#69b3a2")+
+    geom_label(aes(x=20000, y=3e-4, label="control"), color="#69b3a2") +
+  # Bottom
+geom_histogram(data=data_methylation_rate_high_num[-(1:num_controlcell),], aes(x = num, y = -after_stat(density)),bins=100, fill= "#404080")+
+    geom_label(aes(x=20000, y=-1.5e-4, label="test"), color="#404080")+
+coord_cartesian(xlim = c(0,22000))
+
+
+
+error_reads_list_1 <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess1/error_reads_list_73_control.rds")
+
+error_reads_list_2 <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess1/error_reads_list_73_treatment.rds")
+
+
+error_reads_list_3 <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess1/error_reads_list_74_treatment.rds")
+
+error_reads_list <- c(error_reads_list_1,error_reads_list_2,error_reads_list_3)
+rm(error_reads_list_1,error_reads_list_2,error_reads_list_3)
+
+
+
+
+
+
+
+
+discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
+error_reads_list <- error_reads_list[-discard_cell]
+
+error_reads_data <- as.data.frame(error_reads_list)
+error_reads_data_sum <- apply(error_reads_data,1,sum)
+
+frequency_all <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all.rds")
+
+
+frequency_all_sum <- lapply(frequency_all,function(x) rowSums(x))
+
+frequency_all_median <- apply(as.data.frame(frequency_all_sum),1,median)
+frequency_all_sum <- apply(as.data.frame(frequency_all_sum),1,sum)
+
+
+error_rate <- error_reads_data_sum/(error_reads_data_sum+frequency_all_sum)
+
+
+
+#length(union(which(error_rate>0.001),which(frequency_all_average<=1)))
+#length(which(frequency_all_average<=10))
+
+rm(list=ls()[! ls() %in% c("error_rate","frequency_all_median","methylation_rate")])
+gc()
+union_set <- union(union(which(error_rate>=0.01),which(is.na(error_rate))),which(frequency_all_median<=10))
+
+
+methylation_rate_processed <- lapply(methylation_rate, function(df) df[-union_set])
+
+# see the histogram of the number of the sites methylation rate >=0.5
+methylation_rate_high_num_processed <- as.numeric(lapply(methylation_rate_processed, function(x) length(which(x>=0.3))))
+
+num_controlcell <- length(which(grepl("YTHmutcell",names(methylation_rate))))
+num_testcell <- length(which(grepl("YTHcell",names(methylation_rate))))
+
+data_methylation_rate_high_num_processed <-  data.frame(cbind(methylation_rate_high_num_processed,c(rep("control",num_controlcell),rep("test",num_testcell))))
+
+colnames(data_methylation_rate_high_num_processed) <- c("num","group")
+data_methylation_rate_high_num_processed$num <- as.numeric(data_methylation_rate_high_num_processed$num)
+
+ggplot() +
+  geom_histogram(data=data_methylation_rate_high_num_processed[1:num_controlcell,],alpha=0.8, aes(x=num,y=after_stat(density)),bins=100, fill="#69b3a2")+
+    geom_label(aes(x=300, y=0.0002, label="control"), color="#69b3a2") +
+  # Bottom
+geom_histogram(data=data_methylation_rate_high_num_processed[-(1:num_controlcell),], aes(x = num, y = -after_stat(density)),bins=100, fill= "#404080")+
+    geom_label(aes(x=300, y=-0.0001, label="test"), color="#404080")
+
+
+
+
+setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2")
+saveRDS(union_set,"discard_sites.rds")
+
+discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
+methylation_rate_processed <- methylation_rate_processed[-discard_cell]
+
+setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2")
+saveRDS(methylation_rate_processed,"methylation_rate_processed.rds")
+
+
+
+rm(list=ls()[! ls() %in% c("union_set")])
+frequency_all <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all.rds")
+frequency_all_processed <- lapply(frequency_all, function(df) df[-union_set,])
+
+discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
+frequency_all_processed <- frequency_all_processed[-discard_cell]
+
+setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2")
+saveRDS(frequency_all_processed,"frequency_all_processed.rds")
+```
+
+# compare the performance for different model
+
+## random chose the control group
+### 2
+
+#### preprocess
+```{r,eval=FALSE}
+frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+# get the meth reads and unmeth reads
+meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
+unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
+colnames(meth) <- paste("meth_",names(frequency_all_processed),sep="")
+colnames(unmeth) <- paste("unmeth_",names(frequency_all_processed),sep="")
+
+# get number of control cell and test cell
+num_testcell <- length(which(grepl("YTHcell",names(frequency_all_processed))))
+num_controlcell <- length(which(grepl("YTHmutcell",names(frequency_all_processed))))
+
+
+rm(frequency_all_processed)
+
+set.seed(1)
+# we random choose 10 control data as the fake test data
+
+test_fake <- sample(1:num_controlcell,10)
+control_index <- setdiff(1:num_controlcell,test_fake)
+
+# also random choose 10 real test data, combine them
+test_index <- c( sample((num_controlcell+1):(num_controlcell+num_testcell),10), test_fake)
+
+
+# select random cells
+num_cell_control <- 2
+control_index <- sample(control_index,num_cell_control)
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+setwd(path )
+saveRDS(control_index,"control_index.rds")
+
+setwd(path)
+saveRDS(test_index,"test_index.rds")
+
+meth_control <- meth[,control_index]
+meth_test <- meth[,test_index]
+
+unmeth_control <- unmeth[,control_index]
+unmeth_test <- unmeth[,test_index]
+
+rm(meth,unmeth)
+```
+
+#### put into different model
+
+##### scDART
+```{r,eval=FALSE}
+
+
+start_time <- Sys.time()
+
+# put into the scDART model
+single_test_scDART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  # combine as the total reads
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- rowSums(meth_control)/rowSums(data1)
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth_test)[2])==0){
+     # first condition
+      index_1 <- which(data2>=20)
+      
+      # second condition
+      p_test <- meth_test/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
+      
+      # second condition
+      p_test <- meth_test[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+
+res_scDART <-  single_test_scDART(meth_control,meth_test,unmeth_control,unmeth_test)
+
+res_scDART_ <- list()
+num_sites <- dim(meth_control)[1]
+
+for (i in 1:length(res_scDART)){
+  
+  
+  # res_scDART
+  
+  res_scDART_[[i]] <- rep(0,num_sites)
+  res_scDART_[[i]][res_scDART[[i]]] <- 1
+
+
+    
+  
+}
+
+
+
+
+end_time <- Sys.time()
+run_time_scDART <- end_time-start_time
+
+setwd(path )
+saveRDS(res_scDART_,"res_scDART_.rds")
+
+rm(res_scDART,res_scDART_)
+```
+
+
+##### DESeq2
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+
+#library(DESeq2)
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+  
+  
+  
+  sizeFactor <- function(data) {
+  # make the elements no smaller than 0
+  data <- as.matrix(data)
+  
+  # first log
+  log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data)
+  log_s <- log_data-log_mean
+  
+  # then exp
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  return(s_size)
+}
+
+  num <- dim(unmeth_control)[2]
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+    design = data.frame(
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~  Meth + Trt + Meth:Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = sizeFactor(cbind((meth_control[,1:num]+unmeth_control[,1:num]),
+                       (meth_test[,i]+unmeth_test[,i])))
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+
+ 
+  
+  return(res)
+}
+
+
+res_DESeq2 <-  DESeq2_test(meth_control,meth_test,unmeth_control,unmeth_test)
+
+
+end_time <- Sys.time()
+run_time_DESeq2 <- end_time-start_time
+
+setwd(path )
+saveRDS(res_DESeq2,"res_DESeq2.rds")
+
+rm(res_DESeq2)
+```
+
+##### edgeR
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+#library("edgeR")
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  num <- dim(meth_control)[2]
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control+unmeth_control),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+res_edgeR <-  edgeR_test(meth_control,meth_test,unmeth_control,unmeth_test)
+
+
+end_time <- Sys.time()
+run_time_edgeR <- end_time-start_time
+
+
+setwd(path)
+saveRDS(res_edgeR,"res_edgeR.rds")
+rm(res_edgeR)
+
+```
+
+
+##### SigRM
+
+###### SigRM_locfit
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_locfit <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,method_dispersion = "locfit")
+end_time <- Sys.time()
+run_time_SigRM_locfit <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_locfit,"res_SigRM_locfit.rds")
+rm(res_SigRM_locfit)
+
+```
+
+###### SigRM_unbiased 
+```{r,eval=FALSE}
+start_time <- Sys.time()
+res_SigRM_unbiased <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test)
+end_time <- Sys.time()
+run_time_SigRM_unbiased <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_unbiased,"res_SigRM_unbiased.rds")
+rm(res_SigRM_unbiased)
+
+```
+
+###### SigRM_mle
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_mle <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,method_dispersion = "mle")
+end_time <- Sys.time()
+run_time_SigRM_mle <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_mle,"res_SigRM_mle.rds")
+rm(res_SigRM_mle)
+
+```
+#### runtime 
+```{r,eval=FALSE}
+setwd(path)
+runtime <- data.frame(run_time_scDART, run_time_DESeq2, run_time_edgeR, run_time_SigRM_locfit, run_time_SigRM_unbiased, run_time_SigRM_mle)
+save(runtime,file = "runtime.RData")
+```
+
+
+#### ks test 
+```{r,eval=FALSE}
+rm(list=ls())
+num_cell_control <- 2
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+
+setwd(path)
+
+res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
+res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
+res_SigRM_locfit <- readRDS(paste0(path,"/res_SigRM_locfit.rds"))
+res_SigRM_mle <- readRDS(paste0(path,"/res_SigRM_mle.rds"))
+res_SigRM_unbiased <- readRDS(paste0(path,"/res_SigRM_unbiased.rds"))
+res_edgeR <- readRDS(paste0(path,"/res_edgeR.rds"))
+
+control_index <- readRDS(paste0(path,"/control_index.rds"))
+test_index <- readRDS(paste0(path,"/test_index.rds"))
+
+
+# only see the sites both have the results
+index_nona <- list()
+
+
+for (i in 1: length(res_DESeq2)){
+  
+  index_nona1 <- which(!is.na(res_DESeq2[[i]][,5]))
+  index_nona2 <- which(!is.na(res_SigRM_unbiased[[5]][,i]))
+  index_nona3 <- which(!is.na(res_edgeR[[i]][,4]))
+  index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
+}
+
+setwd(path)
+saveRDS(index_nona,"index_nona.rds")
+
+
+res_SigRM_unbiased_ks <- c()
+res_SigRM_locfit_ks <- c()
+res_SigRM_mle_ks <- c()
+res_scDART_ks <- c()
+res_DESeq2_ks <- c()
+
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
+
+
+ks_list_function <- function (x,index_x,y,index_y){
+  x <- Map(function(x, index_x) x[index_x], x, index_x)
+  y <- Map(function(y, index_y) y[index_y], y, index_y)
+
+  l_y <- length(y)
+  ks_list <- list()
+  for (i in 1:l_y){
+    a <- lapply(x,function(x) ks_function(x,y[[i]]))
+    ks_list <- c(ks_list,a)
+  }
+  return(ks_list)
+}
+
+
+
+
+
+
+   index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+  
+ 
+   
+  res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit[[5]][1:10],index_nona[1:10],res_SigRM_locfit[[5]][11:20],index_nona[11:20])
+  
+    res_SigRM_mle_ks <- ks_list_function(res_SigRM_mle[[5]][1:10],index_nona[1:10],res_SigRM_mle[[5]][11:20],index_nona[11:20])
+    
+   res_SigRM_unbiased_ks <- ks_list_function(res_SigRM_unbiased[[5]][1:10],index_nona[1:10],res_SigRM_unbiased[[5]][11:20],index_nona[11:20])
+     
+  res_scDART_ks <- ks_list_function(res_scDART_[1:10],index_nona[1:  10],res_scDART_[11:20],index_nona[
+    11:20])
+  
+  res_DESeq2_pvalue <- lapply(res_DESeq2,function(df) df[,5])
+
+  
+  res_DESeq2_ks <- ks_list_function(res_DESeq2_pvalue[1:10],index_nona[1:  10],res_DESeq2_pvalue[11:20],index_nona[11:20])
+  
+    res_edgeR_pvalue <- lapply(res_edgeR,function(df) df[,4])
+
+  
+  res_edgeR_ks <- ks_list_function(res_edgeR_pvalue[1:10],index_nona[1:  10],res_edgeR_pvalue[11:20],index_nona[11:20])
+    
+  
+
+
+kstest_data_origin <- matrix(c(as.numeric(res_SigRM_locfit_ks),as.numeric(res_SigRM_mle_ks),as.numeric(res_SigRM_unbiased_ks),as.numeric(res_scDART_ks), as.numeric(res_DESeq2_ks),as.numeric(res_edgeR_ks),
+                     rep("SigRM_locfit",100),rep("SigRM_mle",100),rep("SigRM_unbiased",100),rep("scDART",100),rep("DESeq2",100),
+                     rep("edgeR",100)),ncol=2)
+kstest_data_origin  <- data.frame(kstest_data_origin)
+colnames(kstest_data_origin ) <- c("ks","method")
+kstest_data_origin$ks <- as.numeric(kstest_data_origin$ks)
+
+
+setwd(path)
+saveRDS(kstest_data_origin,"kstest_data_origin.rds")
+
+```
+
+
+
+
+
+### 4
+
+#### preprocess
+```{r,eval=FALSE}
+rm(list=ls())
+gc()
+frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+# get the meth reads and unmeth reads
+meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
+unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
+colnames(meth) <- paste("meth_",names(frequency_all_processed),sep="")
+colnames(unmeth) <- paste("unmeth_",names(frequency_all_processed),sep="")
+
+# get number of control cell and test cell
+num_testcell <- length(which(grepl("YTHcell",names(frequency_all_processed))))
+num_controlcell <- length(which(grepl("YTHmutcell",names(frequency_all_processed))))
+
+
+rm(frequency_all_processed)
+
+set.seed(1)
+# we random choose 10 control data as the fake test data
+
+test_fake <- sample(1:num_controlcell,10)
+control_index <- setdiff(1:num_controlcell,test_fake)
+
+# also random choose 10 real test data, combine them
+test_index <- c( sample((num_controlcell+1):(num_controlcell+num_testcell),10), test_fake)
+
+
+# select random cells
+num_cell_control <- 4
+control_index <- sample(control_index,num_cell_control)
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+setwd(path )
+saveRDS(control_index,"control_index.rds")
+
+setwd(path)
+saveRDS(test_index,"test_index.rds")
+
+meth_control <- meth[,control_index]
+meth_test <- meth[,test_index]
+
+unmeth_control <- unmeth[,control_index]
+unmeth_test <- unmeth[,test_index]
+
+rm(meth,unmeth)
+```
+
+#### put into different model
+
+##### scDART
+```{r,eval=FALSE}
+
+
+start_time <- Sys.time()
+
+# put into the scDART model
+single_test_scDART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  # combine as the total reads
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- rowSums(meth_control)/rowSums(data1)
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth_test)[2])==0){
+     # first condition
+      index_1 <- which(data2>=20)
+      
+      # second condition
+      p_test <- meth_test/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
+      
+      # second condition
+      p_test <- meth_test[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+
+res_scDART <-  single_test_scDART(meth_control,meth_test,unmeth_control,unmeth_test)
+
+res_scDART_ <- list()
+num_sites <- dim(meth_control)[1]
+
+for (i in 1:length(res_scDART)){
+  
+  
+  # res_scDART
+  
+  res_scDART_[[i]] <- rep(0,num_sites)
+  res_scDART_[[i]][res_scDART[[i]]] <- 1
+
+
+    
+  
+}
+
+
+
+
+end_time <- Sys.time()
+run_time_scDART <- end_time-start_time
+
+setwd(path )
+saveRDS(res_scDART_,"res_scDART_.rds")
+
+rm(res_scDART,res_scDART_)
+```
+
+
+##### DESeq2
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+
+#library(DESeq2)
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+  
+  
+  
+  sizeFactor <- function(data) {
+  # make the elements no smaller than 0
+  data <- as.matrix(data)
+  
+  # first log
+  log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data)
+  log_s <- log_data-log_mean
+  
+  # then exp
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  return(s_size)
+}
+
+  num <- dim(unmeth_control)[2]
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+    design = data.frame(
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~  Meth + Trt + Meth:Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = sizeFactor(cbind((meth_control[,1:num]+unmeth_control[,1:num]),
+                       (meth_test[,i]+unmeth_test[,i])))
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+
+ 
+  
+  return(res)
+}
+
+
+res_DESeq2 <-  DESeq2_test(meth_control,meth_test,unmeth_control,unmeth_test)
+
+
+end_time <- Sys.time()
+run_time_DESeq2 <- end_time-start_time
+
+setwd(path )
+saveRDS(res_DESeq2,"res_DESeq2.rds")
+
+rm(res_DESeq2)
+```
+
+##### edgeR
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+#library("edgeR")
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  num <- dim(meth_control)[2]
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control+unmeth_control),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+res_edgeR <-  edgeR_test(meth_control,meth_test,unmeth_control,unmeth_test)
+
+
+end_time <- Sys.time()
+run_time_edgeR <- end_time-start_time
+
+
+setwd(path)
+saveRDS(res_edgeR,"res_edgeR.rds")
+rm(res_edgeR)
+
+```
+
+
+##### SigRM
+
+###### SigRM_locfit
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_locfit <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,method_dispersion = "locfit")
+end_time <- Sys.time()
+run_time_SigRM_locfit <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_locfit,"res_SigRM_locfit.rds")
+rm(res_SigRM_locfit)
+
+```
+
+###### SigRM_unbiased 
+```{r,eval=FALSE}
+start_time <- Sys.time()
+res_SigRM_unbiased <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test)
+end_time <- Sys.time()
+run_time_SigRM_unbiased <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_unbiased,"res_SigRM_unbiased.rds")
+rm(res_SigRM_unbiased)
+
+```
+
+###### SigRM_mle
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_mle <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,method_dispersion = "mle")
+end_time <- Sys.time()
+run_time_SigRM_mle <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_mle,"res_SigRM_mle.rds")
+rm(res_SigRM_mle)
+
+```
+#### runtime 
+```{r,eval=FALSE}
+setwd(path)
+runtime <- data.frame(run_time_scDART, run_time_DESeq2, run_time_edgeR, run_time_SigRM_locfit, run_time_SigRM_unbiased, run_time_SigRM_mle)
+save(runtime,file = "runtime.RData")
+```
+
+
+#### ks test 
+```{r,eval=FALSE}
+rm(list=ls())
+num_cell_control <- 4
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+
+setwd(path)
+
+res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
+res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
+res_SigRM_locfit <- readRDS(paste0(path,"/res_SigRM_locfit.rds"))
+res_SigRM_mle <- readRDS(paste0(path,"/res_SigRM_mle.rds"))
+res_SigRM_unbiased <- readRDS(paste0(path,"/res_SigRM_unbiased.rds"))
+res_edgeR <- readRDS(paste0(path,"/res_edgeR.rds"))
+
+control_index <- readRDS(paste0(path,"/control_index.rds"))
+test_index <- readRDS(paste0(path,"/test_index.rds"))
+
+
+# only see the sites both have the results
+index_nona <- list()
+
+
+for (i in 1: length(res_DESeq2)){
+  
+  index_nona1 <- which(!is.na(res_DESeq2[[i]][,5]))
+  index_nona2 <- which(!is.na(res_SigRM_unbiased[[5]][,i]))
+  index_nona3 <- which(!is.na(res_edgeR[[i]][,4]))
+  index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
+}
+
+setwd(path)
+saveRDS(index_nona,"index_nona.rds")
+
+res_SigRM_unbiased_ks <- c()
+res_SigRM_locfit_ks <- c()
+res_SigRM_mle_ks <- c()
+res_scDART_ks <- c()
+res_DESeq2_ks <- c()
+
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
+
+
+ks_list_function <- function (x,index_x,y,index_y){
+  x <- Map(function(x, index_x) x[index_x], x, index_x)
+  y <- Map(function(y, index_y) y[index_y], y, index_y)
+
+  l_y <- length(y)
+  ks_list <- list()
+  for (i in 1:l_y){
+    a <- lapply(x,function(x) ks_function(x,y[[i]]))
+    ks_list <- c(ks_list,a)
+  }
+  return(ks_list)
+}
+
+
+
+
+
+
+  
+  
+  index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+   
+  res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit[[5]][1:10],index_nona[1:10],res_SigRM_locfit[[5]][11:20],index_nona[11:20])
+  
+    res_SigRM_mle_ks <- ks_list_function(res_SigRM_mle[[5]][1:10],index_nona[1:10],res_SigRM_mle[[5]][11:20],index_nona[11:20])
+    
+   res_SigRM_unbiased_ks <- ks_list_function(res_SigRM_unbiased[[5]][1:10],index_nona[1:10],res_SigRM_unbiased[[5]][11:20],index_nona[11:20])
+     
+  res_scDART_ks <- ks_list_function(res_scDART_[1:10],index_nona[1:  10],res_scDART_[11:20],index_nona[
+    11:20])
+  
+  res_DESeq2_pvalue <- lapply(res_DESeq2,function(df) df[,5])
+
+  
+  res_DESeq2_ks <- ks_list_function(res_DESeq2_pvalue[1:10],index_nona[1:  10],res_DESeq2_pvalue[11:20],index_nona[11:20])
+  
+    res_edgeR_pvalue <- lapply(res_edgeR,function(df) df[,4])
+
+  
+  res_edgeR_ks <- ks_list_function(res_edgeR_pvalue[1:10],index_nona[1:  10],res_edgeR_pvalue[11:20],index_nona[11:20])
+    
+  
+
+
+kstest_data_origin <- matrix(c(as.numeric(res_SigRM_locfit_ks),as.numeric(res_SigRM_mle_ks),as.numeric(res_SigRM_unbiased_ks),as.numeric(res_scDART_ks), as.numeric(res_DESeq2_ks),as.numeric(res_edgeR_ks),
+                     rep("SigRM_locfit",100),rep("SigRM_mle",100),rep("SigRM_unbiased",100),rep("scDART",100),rep("DESeq2",100),
+                     rep("edgeR",100)),ncol=2)
+kstest_data_origin  <- data.frame(kstest_data_origin)
+colnames(kstest_data_origin ) <- c("ks","method")
+kstest_data_origin$ks <- as.numeric(kstest_data_origin$ks)
+
+
+setwd(path)
+saveRDS(kstest_data_origin,"kstest_data_origin.rds")
+
+```
+
+
+
+
+
+
+### 8
+
+#### preprocess
+```{r,eval=FALSE}
+rm(list=ls())
+gc()
+frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+# get the meth reads and unmeth reads
+meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
+unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
+colnames(meth) <- paste("meth_",names(frequency_all_processed),sep="")
+colnames(unmeth) <- paste("unmeth_",names(frequency_all_processed),sep="")
+
+# get number of control cell and test cell
+num_testcell <- length(which(grepl("YTHcell",names(frequency_all_processed))))
+num_controlcell <- length(which(grepl("YTHmutcell",names(frequency_all_processed))))
+
+
+rm(frequency_all_processed)
+
+set.seed(1)
+# we random choose 10 control data as the fake test data
+
+test_fake <- sample(1:num_controlcell,10)
+control_index <- setdiff(1:num_controlcell,test_fake)
+
+# also random choose 10 real test data, combine them
+test_index <- c( sample((num_controlcell+1):(num_controlcell+num_testcell),10), test_fake)
+
+
+# select random cells
+num_cell_control <- 8
+control_index <- sample(control_index,num_cell_control)
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+setwd(path )
+saveRDS(control_index,"control_index.rds")
+
+setwd(path)
+saveRDS(test_index,"test_index.rds")
+
+meth_control <- meth[,control_index]
+meth_test <- meth[,test_index]
+
+unmeth_control <- unmeth[,control_index]
+unmeth_test <- unmeth[,test_index]
+
+rm(meth,unmeth)
+```
+
+#### put into different model
+
+##### scDART
+```{r,eval=FALSE}
+
+
+start_time <- Sys.time()
+
+# put into the scDART model
+single_test_scDART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  # combine as the total reads
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- rowSums(meth_control)/rowSums(data1)
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth_test)[2])==0){
+     # first condition
+      index_1 <- which(data2>=20)
+      
+      # second condition
+      p_test <- meth_test/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
+      
+      # second condition
+      p_test <- meth_test[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+
+res_scDART <-  single_test_scDART(meth_control,meth_test,unmeth_control,unmeth_test)
+
+res_scDART_ <- list()
+num_sites <- dim(meth_control)[1]
+
+for (i in 1:length(res_scDART)){
+  
+  
+  # res_scDART
+  
+  res_scDART_[[i]] <- rep(0,num_sites)
+  res_scDART_[[i]][res_scDART[[i]]] <- 1
+
+
+    
+  
+}
+
+
+
+
+end_time <- Sys.time()
+run_time_scDART <- end_time-start_time
+
+setwd(path )
+saveRDS(res_scDART_,"res_scDART_.rds")
+
+rm(res_scDART,res_scDART_)
+```
+
+
+##### DESeq2
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+
+#library(DESeq2)
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+  
+  
+  
+  sizeFactor <- function(data) {
+  # make the elements no smaller than 0
+  data <- as.matrix(data)
+  
+  # first log
+  log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data)
+  log_s <- log_data-log_mean
+  
+  # then exp
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  return(s_size)
+}
+
+  num <- dim(unmeth_control)[2]
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+    design = data.frame(
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~  Meth + Trt + Meth:Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = sizeFactor(cbind((meth_control[,1:num]+unmeth_control[,1:num]),
+                       (meth_test[,i]+unmeth_test[,i])))
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+
+ 
+  
+  return(res)
+}
+
+
+res_DESeq2 <-  DESeq2_test(meth_control,meth_test,unmeth_control,unmeth_test)
+
+
+end_time <- Sys.time()
+run_time_DESeq2 <- end_time-start_time
+
+setwd(path )
+saveRDS(res_DESeq2,"res_DESeq2.rds")
+
+rm(res_DESeq2)
+```
+
+##### edgeR
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+#library("edgeR")
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  num <- dim(meth_control)[2]
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control+unmeth_control),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+res_edgeR <-  edgeR_test(meth_control,meth_test,unmeth_control,unmeth_test)
+
+
+end_time <- Sys.time()
+run_time_edgeR <- end_time-start_time
+
+
+setwd(path)
+saveRDS(res_edgeR,"res_edgeR.rds")
+rm(res_edgeR)
+
+```
+
+
+##### SigRM
+
+###### SigRM_locfit
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_locfit <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,method_dispersion = "locfit")
+end_time <- Sys.time()
+run_time_SigRM_locfit <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_locfit,"res_SigRM_locfit.rds")
+rm(res_SigRM_locfit)
+
+```
+
+###### SigRM_unbiased 
+```{r,eval=FALSE}
+start_time <- Sys.time()
+res_SigRM_unbiased <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test)
+end_time <- Sys.time()
+run_time_SigRM_unbiased <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_unbiased,"res_SigRM_unbiased.rds")
+rm(res_SigRM_unbiased)
+
+```
+
+###### SigRM_mle
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_mle <-  SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,method_dispersion = "mle")
+end_time <- Sys.time()
+run_time_SigRM_mle <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_mle,"res_SigRM_mle.rds")
+rm(res_SigRM_mle)
+
+```
+#### runtime 
+```{r,eval=FALSE}
+setwd(path)
+runtime <- data.frame(run_time_scDART, run_time_DESeq2, run_time_edgeR, run_time_SigRM_locfit, run_time_SigRM_unbiased, run_time_SigRM_mle)
+save(runtime,file = "runtime.RData")
+```
+
+
+#### ks test 
+```{r,eval=FALSE}
+rm(list=ls())
+num_cell_control <- 8
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+
+setwd(path)
+
+res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
+res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
+res_SigRM_locfit <- readRDS(paste0(path,"/res_SigRM_locfit.rds"))
+res_SigRM_mle <- readRDS(paste0(path,"/res_SigRM_mle.rds"))
+res_SigRM_unbiased <- readRDS(paste0(path,"/res_SigRM_unbiased.rds"))
+res_edgeR <- readRDS(paste0(path,"/res_edgeR.rds"))
+
+control_index <- readRDS(paste0(path,"/control_index.rds"))
+test_index <- readRDS(paste0(path,"/test_index.rds"))
+
+
+# only see the sites both have the results
+index_nona <- list()
+
+
+for (i in 1: length(res_DESeq2)){
+  
+  index_nona1 <- which(!is.na(res_DESeq2[[i]][,5]))
+  index_nona2 <- which(!is.na(res_SigRM_unbiased[[5]][,i]))
+  index_nona3 <- which(!is.na(res_edgeR[[i]][,4]))
+  index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
+}
+
+setwd(path)
+saveRDS(index_nona,"index_nona.rds")
+
+res_SigRM_unbiased_ks <- c()
+res_SigRM_locfit_ks <- c()
+res_SigRM_mle_ks <- c()
+res_scDART_ks <- c()
+res_DESeq2_ks <- c()
+
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
+
+
+ks_list_function <- function (x,index_x,y,index_y){
+  x <- Map(function(x, index_x) x[index_x], x, index_x)
+  y <- Map(function(y, index_y) y[index_y], y, index_y)
+
+  l_y <- length(y)
+  ks_list <- list()
+  for (i in 1:l_y){
+    a <- lapply(x,function(x) ks_function(x,y[[i]]))
+    ks_list <- c(ks_list,a)
+  }
+  return(ks_list)
+}
+
+
+
+
+
+
+  
+  
+  index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+   
+  res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit[[5]][1:10],index_nona[1:10],res_SigRM_locfit[[5]][11:20],index_nona[11:20])
+  
+    res_SigRM_mle_ks <- ks_list_function(res_SigRM_mle[[5]][1:10],index_nona[1:10],res_SigRM_mle[[5]][11:20],index_nona[11:20])
+    
+   res_SigRM_unbiased_ks <- ks_list_function(res_SigRM_unbiased[[5]][1:10],index_nona[1:10],res_SigRM_unbiased[[5]][11:20],index_nona[11:20])
+     
+  res_scDART_ks <- ks_list_function(res_scDART_[1:10],index_nona[1:  10],res_scDART_[11:20],index_nona[
+    11:20])
+  
+  res_DESeq2_pvalue <- lapply(res_DESeq2,function(df) df[,5])
+
+  
+  res_DESeq2_ks <- ks_list_function(res_DESeq2_pvalue[1:10],index_nona[1:  10],res_DESeq2_pvalue[11:20],index_nona[11:20])
+  
+    res_edgeR_pvalue <- lapply(res_edgeR,function(df) df[,4])
+
+  
+  res_edgeR_ks <- ks_list_function(res_edgeR_pvalue[1:10],index_nona[1:  10],res_edgeR_pvalue[11:20],index_nona[11:20])
+    
+  
+
+
+kstest_data_origin <- matrix(c(as.numeric(res_SigRM_locfit_ks),as.numeric(res_SigRM_mle_ks),as.numeric(res_SigRM_unbiased_ks),as.numeric(res_scDART_ks), as.numeric(res_DESeq2_ks),as.numeric(res_edgeR_ks),
+                     rep("SigRM_locfit",100),rep("SigRM_mle",100),rep("SigRM_unbiased",100),rep("scDART",100),rep("DESeq2",100),
+                     rep("edgeR",100)),ncol=2)
+kstest_data_origin  <- data.frame(kstest_data_origin)
+colnames(kstest_data_origin ) <- c("ks","method")
+kstest_data_origin$ks <- as.numeric(kstest_data_origin$ks)
+
+
+setwd(path)
+saveRDS(kstest_data_origin,"kstest_data_origin.rds")
+
+```
+
+## choose the cell with the similar gene expression pattern as the control groups
+### 2
+
+#### preprocess
+```{r,eval=FALSE}
+frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+# get the meth reads and unmeth reads
+meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
+unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
+colnames(meth) <- paste("meth_",names(frequency_all_processed),sep="")
+colnames(unmeth) <- paste("unmeth_",names(frequency_all_processed),sep="")
+
+# get number of control cell and test cell
+num_testcell <- length(which(grepl("YTHcell",names(frequency_all_processed))))
+num_controlcell <- length(which(grepl("YTHmutcell",names(frequency_all_processed))))
+
+
+rm(frequency_all_processed)
+
+set.seed(1)
+# we random choose 10 control data as the fake test data
+
+test_fake <- sample(1:num_controlcell,10)
+
+test_real <- sample((num_controlcell+1):(num_controlcell+num_testcell),10)
+# also random choose 10 real test data, combine them
+test_index <- c(test_real, test_fake)
+
+
+expression_logTPM <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+expression_logTPM <- log2(expression_logTPM+1)
+index <- c(setdiff(1:num_controlcell,test_fake),(num_controlcell+1):(num_controlcell+num_testcell),test_fake)
+expression_logTPM <- expression_logTPM[,index]
+
+
+
+
+
+
+similarity_data <- cor(expression_logTPM, method = "pearson")
+
+#library(doBy)
+  similarity_index <- apply(similarity_data,2, function(x){which.maxn(x,
+                                      (num_testcell+num_controlcell))})
+  similarity_index <- as.matrix(similarity_index[,(1+num_controlcell-10):(num_testcell+num_controlcell)])
+  list_create <- as.list(1: (num_testcell+10))
+  
+  list_function <- function(x){
+    similarity_index_ <- similarity_index[which(similarity_index[,
+                                  x]%in%c(1:(num_controlcell-10))),x]
+    return(similarity_index_)
+  }
+  
+  similarity_index <- as.data.frame(lapply(list_create,list_function))
+
+        
+test_index_ <- c(test_index[1:10]-391,992:1001)
+
+similarity_index <- similarity_index [test_index_]
+
+num_cell_control <- 2
+
+control_index <- lapply(similarity_index,function(df) df[1:num_cell_control])
+
+
+
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+setwd(path )
+saveRDS(control_index,"control_index.rds")
+
+setwd(path)
+saveRDS(test_index,"test_index.rds")
+
+```
+
+#### put into different model
+
+##### scDART
+```{r,eval=FALSE}
+
+
+start_time <- Sys.time()
+
+# put into the scDART model
+single_test_scDART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  # combine as the total reads
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- rowSums(meth_control)/rowSums(data1)
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth_test)[2])==0){
+     # first condition
+      index_1 <- which(data2>=20)
+      
+      # second condition
+      p_test <- meth_test/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
+      
+      # second condition
+      p_test <- meth_test[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+
+res_scDART <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_scDART[[i]] <- single_test_scDART(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+res_scDART_ <- list()
+num_sites <- dim(meth_control)[1]
+
+for (i in 1:length(res_scDART)){
+  
+  
+  # res_scDART
+  
+  res_scDART_[[i]] <- rep(0,num_sites)
+  res_scDART_[[i]][res_scDART[[i]]] <- 1
+
+
+    
+  
+}
+
+
+
+
+end_time <- Sys.time()
+run_time_scDART <- end_time-start_time
+
+setwd(path )
+saveRDS(res_scDART_,"res_scDART_.rds")
+
+rm(res_scDART,res_scDART_)
+```
+
+
+##### DESeq2
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+
+#library(DESeq2)
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+  num <- dim(meth_control)[2]
+  
+  sizeFactor <- function(data) {
+  # make the elements no smaller than 0
+  data <- as.matrix(data)
+  
+  # first log
+  log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data)
+  log_s <- log_data-log_mean
+  
+  # then exp
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  return(s_size)
+}
+
+  
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+    design = data.frame(
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~ Meth + Trt + Meth:Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = sizeFactor(cbind((meth_control+unmeth_control),
+                       (meth_test[,i]+unmeth_test[,i])))
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+
+ 
+  
+  return(res)
+}
+
+res_DESeq2 <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_DESeq2[[i]] <-  DESeq2_test(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+end_time <- Sys.time()
+run_time_DESeq2 <- end_time-start_time
+
+setwd(path )
+saveRDS(res_DESeq2,"res_DESeq2.rds")
+
+rm(res_DESeq2)
+```
+
+##### edgeR
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+#library("edgeR")
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  num <- dim(meth_control)[2]
+  
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control+unmeth_control),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~0+group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+res_edgeR <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- data.frame(meth[,test_index[i]])
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- data.frame(unmeth[,test_index[i]])
+  
+  res_edgeR[[i]] <-  edgeR_test(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+end_time <- Sys.time()
+run_time_edgeR <- end_time-start_time
+
+
+setwd(path)
+saveRDS(res_edgeR,"res_edgeR.rds")
+rm(res_edgeR)
+
+```
+
+
+##### SigRM
+
+###### SigRM_locfit
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_locfit <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_locfit[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,
+                                                   method_dispersion = "locfit")) 
+  
+}
+
+end_time <- Sys.time()
+run_time_SigRM_locfit <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_locfit,"res_SigRM_locfit.rds")
+rm(res_SigRM_locfit)
+
+```
+
+###### SigRM_unbiased
+```{r,eval=FALSE}
+start_time <- Sys.time()
+res_SigRM_unbiased <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_unbiased[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test)) 
+  
+}
+end_time <- Sys.time()
+run_time_SigRM_unbiased <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_unbiased,"res_SigRM_unbiased.rds")
+rm(res_SigRM_unbiased)
+
+```
+
+###### SigRM_mle
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_mle <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_mle[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test, method_dispersion = "mle")) 
+  
+}
+end_time <- Sys.time()
+run_time_SigRM_mle <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_mle,"res_SigRM_mle.rds")
+rm(res_SigRM_mle)
+
+```
+#### runtime 
+```{r,eval=FALSE}
+setwd(path)
+runtime <- data.frame(run_time_scDART, run_time_DESeq2, run_time_edgeR, run_time_SigRM_locfit, run_time_SigRM_unbiased, run_time_SigRM_mle)
+save(runtime,file = "runtime.RData")
+```
+
+
+#### ks test 
+```{r,eval=FALSE}
+rm(list=ls())
+num_cell_control <- 2
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+
+res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
+res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
+res_SigRM_locfit <- readRDS(paste0(path,"/res_SigRM_locfit.rds"))
+res_SigRM_mle <- readRDS(paste0(path,"/res_SigRM_mle.rds"))
+res_SigRM_unbiased <- readRDS(paste0(path,"/res_SigRM_unbiased.rds"))
+res_edgeR <- readRDS(paste0(path,"/res_edgeR.rds"))
+
+control_index <- readRDS(paste0(path,"/control_index.rds"))
+test_index <- readRDS(paste0(path,"/test_index.rds"))
+
+
+
+# only see the sites both have the results
+index_nona <- list()
+
+for (i in 1: length(res_DESeq2)){
+  
+  index_nona1 <- which(!is.na(res_DESeq2[[i]][[1]][,5]))
+  index_nona2 <- which(!is.na(res_SigRM_unbiased[[i]][,5]))
+  index_nona3 <- which(!is.na(res_edgeR[[i]][[1]][,4]))
+  index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
+}
+
+setwd(path)
+saveRDS(index_nona,"index_nona.rds")
+
+res_SigRM_unbiased_ks <- c()
+res_SigRM_locfit_ks <- c()
+res_SigRM_mle_ks <- c()
+res_scDART_ks <- c()
+res_DESeq2_ks <- c()
+
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
+
+
+ks_list_function <- function (x,index_x,y,index_y){
+  x <- Map(function(x, index_x) x[index_x], x, index_x)
+  y <- Map(function(y, index_y) y[index_y], y, index_y)
+
+  l_y <- length(y)
+  ks_list <- list()
+  for (i in 1:l_y){
+    a <- lapply(x,function(x,index_x) ks_function(x,y[[i]]))
+    ks_list <- c(ks_list,a)
+  }
+  return(ks_list)
+}
+
+
+
+
+
+    index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+    
+    res_SigRM_locfit_pvalue <- lapply(res_SigRM_locfit,function(df) df[,5])
+    
+    res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit_pvalue[1:10],index_nona[1:10],res_SigRM_locfit_pvalue[11:20],index_nona[11:20])
+    
+    res_SigRM_mle_pvalue <- lapply(res_SigRM_mle,function(df) df[,5])
+  
+    res_SigRM_mle_ks <- ks_list_function(res_SigRM_mle_pvalue[1:10],index_nona[1:10],res_SigRM_mle_pvalue[11:20],index_nona[11:20])
+    
+    res_SigRM_unbiased_pvalue <- lapply(res_SigRM_unbiased,function(df) df[,5])
+    
+    res_SigRM_unbiased_ks <- ks_list_function(res_SigRM_unbiased_pvalue[1:10],index_nona[1:10],res_SigRM_unbiased_pvalue[11:20],index_nona[11:20])
+     
+    res_scDART_ks <- ks_list_function(res_scDART_[1:10],index_nona[1:  10],res_scDART_[11:20],index_nona[
+    11:20])
+  
+    res_DESeq2_pvalue <- lapply(res_DESeq2,function(df) df[[1]][,5])
+ 
+  
+    res_DESeq2_ks <- ks_list_function(res_DESeq2_pvalue[1:10],index_nona[1:  10],res_DESeq2_pvalue[11:20],index_nona[11:20])
+  
+    res_edgeR_pvalue <- lapply(res_edgeR,function(df) df[[1]][,4])
+ 
+  
+    res_edgeR_ks <- ks_list_function(res_edgeR_pvalue[1:10],index_nona[1:  10],res_edgeR_pvalue[11:20],index_nona[11:20])
+    
+   
+
+
+kstest_data_origin <- matrix(c(as.numeric(res_SigRM_locfit_ks),as.numeric(res_SigRM_mle_ks),as.numeric(res_SigRM_unbiased_ks),as.numeric(res_scDART_ks), as.numeric(res_DESeq2_ks),as.numeric(res_edgeR_ks),
+                     rep("SigRM_locfit",100),rep("SigRM_mle",100),rep("SigRM_unbiased",100),rep("scDART",100),rep("DESeq2",100),
+                     rep("edgeR",100)),ncol=2)
+kstest_data_origin  <- data.frame(kstest_data_origin)
+colnames(kstest_data_origin ) <- c("ks","method")
+kstest_data_origin$ks <- as.numeric(kstest_data_origin$ks)
+
+
+
+setwd(path)
+saveRDS(kstest_data_origin,"kstest_data_origin.rds")
+
+```
+
+
+
+
+
+### 4
+
+#### preprocess
+```{r,eval=FALSE}
+rm(list=ls())
+gc()
+frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+# get the meth reads and unmeth reads
+meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
+unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
+colnames(meth) <- paste("meth_",names(frequency_all_processed),sep="")
+colnames(unmeth) <- paste("unmeth_",names(frequency_all_processed),sep="")
+
+# get number of control cell and test cell
+num_testcell <- length(which(grepl("YTHcell",names(frequency_all_processed))))
+num_controlcell <- length(which(grepl("YTHmutcell",names(frequency_all_processed))))
+
+
+rm(frequency_all_processed)
+
+set.seed(1)
+# we random choose 10 control data as the fake test data
+
+test_fake <- sample(1:num_controlcell,10)
+
+test_real <- sample((num_controlcell+1):(num_controlcell+num_testcell),10)
+# also random choose 10 real test data, combine them
+test_index <- c(test_real, test_fake)
+
+
+expression_logTPM <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+expression_logTPM <- log2(expression_logTPM+1)
+index <- c(setdiff(1:num_controlcell,test_fake),(num_controlcell+1):(num_controlcell+num_testcell),test_fake)
+expression_logTPM <- expression_logTPM[,index]
+
+
+
+
+
+
+similarity_data <- cor(expression_logTPM, method = "pearson")
+
+#library(doBy)
+  similarity_index <- apply(similarity_data,2, function(x){which.maxn(x,
+                                      (num_testcell+num_controlcell))})
+  similarity_index <- as.matrix(similarity_index[,(1+num_controlcell-10):(num_testcell+num_controlcell)])
+  list_create <- as.list(1: (num_testcell+10))
+  
+  list_function <- function(x){
+    similarity_index_ <- similarity_index[which(similarity_index[,
+                                  x]%in%c(1:(num_controlcell-10))),x]
+    return(similarity_index_)
+  }
+  
+  similarity_index <- as.data.frame(lapply(list_create,list_function))
+
+        
+test_index_ <- c(test_index[1:10]-391,992:1001)
+
+similarity_index <- similarity_index [test_index_]
+
+num_cell_control <- 4
+
+control_index <- lapply(similarity_index,function(df) df[1:num_cell_control])
+
+
+
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+setwd(path )
+saveRDS(control_index,"control_index.rds")
+
+setwd(path)
+saveRDS(test_index,"test_index.rds")
+
+```
+
+#### put into different model
+
+##### scDART
+```{r,eval=FALSE}
+
+
+start_time <- Sys.time()
+
+# put into the scDART model
+single_test_scDART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  # combine as the total reads
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- rowSums(meth_control)/rowSums(data1)
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth_test)[2])==0){
+     # first condition
+      index_1 <- which(data2>=20)
+      
+      # second condition
+      p_test <- meth_test/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
+      
+      # second condition
+      p_test <- meth_test[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+
+res_scDART <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_scDART[[i]] <- single_test_scDART(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+res_scDART_ <- list()
+num_sites <- dim(meth_control)[1]
+
+for (i in 1:length(res_scDART)){
+  
+  
+  # res_scDART
+  
+  res_scDART_[[i]] <- rep(0,num_sites)
+  res_scDART_[[i]][res_scDART[[i]]] <- 1
+
+
+    
+  
+}
+
+
+
+
+end_time <- Sys.time()
+run_time_scDART <- end_time-start_time
+
+setwd(path )
+saveRDS(res_scDART_,"res_scDART_.rds")
+
+rm(res_scDART,res_scDART_)
+```
+
+
+##### DESeq2
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+
+#library(DESeq2)
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+  num <- dim(meth_control)[2]
+  
+  sizeFactor <- function(data) {
+  # make the elements no smaller than 0
+  data <- as.matrix(data)
+  
+  # first log
+  log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data)
+  log_s <- log_data-log_mean
+  
+  # then exp
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  return(s_size)
+}
+
+  
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+    design = data.frame(
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~ Meth + Trt + Meth:Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = sizeFactor(cbind((meth_control+unmeth_control),
+                       (meth_test[,i]+unmeth_test[,i])))
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+
+ 
+  
+  return(res)
+}
+
+res_DESeq2 <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_DESeq2[[i]] <-  DESeq2_test(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+end_time <- Sys.time()
+run_time_DESeq2 <- end_time-start_time
+
+setwd(path )
+saveRDS(res_DESeq2,"res_DESeq2.rds")
+
+rm(res_DESeq2)
+```
+
+##### edgeR
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+#library("edgeR")
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  num <- dim(meth_control)[2]
+  
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control+unmeth_control),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~0+group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+res_edgeR <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- data.frame(meth[,test_index[i]])
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- data.frame(unmeth[,test_index[i]])
+  
+  res_edgeR[[i]] <-  edgeR_test(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+end_time <- Sys.time()
+run_time_edgeR <- end_time-start_time
+
+
+setwd(path)
+saveRDS(res_edgeR,"res_edgeR.rds")
+rm(res_edgeR)
+
+```
+
+
+##### SigRM
+
+###### SigRM_locfit
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_locfit <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_locfit[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,
+                                                   method_dispersion = "locfit")) 
+  
+}
+
+end_time <- Sys.time()
+run_time_SigRM_locfit <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_locfit,"res_SigRM_locfit.rds")
+rm(res_SigRM_locfit)
+
+```
+
+###### SigRM_unbiased
+```{r,eval=FALSE}
+start_time <- Sys.time()
+res_SigRM_unbiased <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_unbiased[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test)) 
+  
+}
+end_time <- Sys.time()
+run_time_SigRM_unbiased <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_unbiased,"res_SigRM_unbiased.rds")
+rm(res_SigRM_unbiased)
+
+```
+
+###### SigRM_mle
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_mle <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_mle[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test, method_dispersion = "mle")) 
+  
+}
+end_time <- Sys.time()
+run_time_SigRM_mle <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_mle,"res_SigRM_mle.rds")
+rm(res_SigRM_mle)
+
+```
+#### runtime 
+```{r,eval=FALSE}
+setwd(path)
+runtime <- data.frame(run_time_scDART, run_time_DESeq2, run_time_edgeR, run_time_SigRM_locfit, run_time_SigRM_unbiased, run_time_SigRM_mle)
+save(runtime,file = "runtime.RData")
+```
+
+
+#### ks test 
+```{r,eval=FALSE}
+rm(list=ls())
+num_cell_control <- 4
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+
+res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
+res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
+res_SigRM_locfit <- readRDS(paste0(path,"/res_SigRM_locfit.rds"))
+res_SigRM_mle <- readRDS(paste0(path,"/res_SigRM_mle.rds"))
+res_SigRM_unbiased <- readRDS(paste0(path,"/res_SigRM_unbiased.rds"))
+res_edgeR <- readRDS(paste0(path,"/res_edgeR.rds"))
+
+control_index <- readRDS(paste0(path,"/control_index.rds"))
+test_index <- readRDS(paste0(path,"/test_index.rds"))
+
+
+
+# only see the sites both have the results
+index_nona <- list()
+
+for (i in 1: length(res_DESeq2)){
+  
+  index_nona1 <- which(!is.na(res_DESeq2[[i]][[1]][,5]))
+  index_nona2 <- which(!is.na(res_SigRM_unbiased[[i]][,5]))
+  index_nona3 <- which(!is.na(res_edgeR[[i]][[1]][,4]))
+  index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
+}
+
+setwd(path)
+saveRDS(index_nona,"index_nona.rds")
+
+res_SigRM_unbiased_ks <- c()
+res_SigRM_locfit_ks <- c()
+res_SigRM_mle_ks <- c()
+res_scDART_ks <- c()
+res_DESeq2_ks <- c()
+
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
+
+
+ks_list_function <- function (x,index_x,y,index_y){
+  x <- Map(function(x, index_x) x[index_x], x, index_x)
+  y <- Map(function(y, index_y) y[index_y], y, index_y)
+
+  l_y <- length(y)
+  ks_list <- list()
+  for (i in 1:l_y){
+    a <- lapply(x,function(x,index_x) ks_function(x,y[[i]]))
+    ks_list <- c(ks_list,a)
+  }
+  return(ks_list)
+}
+
+
+
+
+
+   index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+  
+    res_SigRM_locfit_pvalue <- lapply(res_SigRM_locfit,function(df) df[,5])
+    
+    res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit_pvalue[1:10],index_nona[1:10],res_SigRM_locfit_pvalue[11:20],index_nona[11:20])
+    
+    res_SigRM_mle_pvalue <- lapply(res_SigRM_mle,function(df) df[,5])
+  
+    res_SigRM_mle_ks <- ks_list_function(res_SigRM_mle_pvalue[1:10],index_nona[1:10],res_SigRM_mle_pvalue[11:20],index_nona[11:20])
+    
+    res_SigRM_unbiased_pvalue <- lapply(res_SigRM_unbiased,function(df) df[,5])
+    
+    res_SigRM_unbiased_ks <- ks_list_function(res_SigRM_unbiased_pvalue[1:10],index_nona[1:10],res_SigRM_unbiased_pvalue[11:20],index_nona[11:20])
+     
+    res_scDART_ks <- ks_list_function(res_scDART_[1:10],index_nona[1:  10],res_scDART_[11:20],index_nona[
+    11:20])
+  
+    res_DESeq2_pvalue <- lapply(res_DESeq2,function(df) df[[1]][,5])
+ 
+  
+    res_DESeq2_ks <- ks_list_function(res_DESeq2_pvalue[1:10],index_nona[1:  10],res_DESeq2_pvalue[11:20],index_nona[11:20])
+  
+    res_edgeR_pvalue <- lapply(res_edgeR,function(df) df[[1]][,4])
+ 
+  
+    res_edgeR_ks <- ks_list_function(res_edgeR_pvalue[1:10],index_nona[1:  10],res_edgeR_pvalue[11:20],index_nona[11:20])
+    
+   
+
+
+kstest_data_origin <- matrix(c(as.numeric(res_SigRM_locfit_ks),as.numeric(res_SigRM_mle_ks),as.numeric(res_SigRM_unbiased_ks),as.numeric(res_scDART_ks), as.numeric(res_DESeq2_ks),as.numeric(res_edgeR_ks),
+                     rep("SigRM_locfit",100),rep("SigRM_mle",100),rep("SigRM_unbiased",100),rep("scDART",100),rep("DESeq2",100),
+                     rep("edgeR",100)),ncol=2)
+kstest_data_origin  <- data.frame(kstest_data_origin)
+colnames(kstest_data_origin ) <- c("ks","method")
+kstest_data_origin$ks <- as.numeric(kstest_data_origin$ks)
+
+
+
+
+setwd(path)
+saveRDS(kstest_data_origin,"kstest_data_origin.rds")
+```
+
+
+
+
+
+
+### 8
+
+#### preprocess
+```{r,eval=FALSE}
+rm(list=ls())
+gc()
+frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+# get the meth reads and unmeth reads
+meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
+unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
+colnames(meth) <- paste("meth_",names(frequency_all_processed),sep="")
+colnames(unmeth) <- paste("unmeth_",names(frequency_all_processed),sep="")
+
+# get number of control cell and test cell
+num_testcell <- length(which(grepl("YTHcell",names(frequency_all_processed))))
+num_controlcell <- length(which(grepl("YTHmutcell",names(frequency_all_processed))))
+
+
+rm(frequency_all_processed)
+
+set.seed(1)
+# we random choose 10 control data as the fake test data
+
+test_fake <- sample(1:num_controlcell,10)
+
+test_real <- sample((num_controlcell+1):(num_controlcell+num_testcell),10)
+# also random choose 10 real test data, combine them
+test_index <- c(test_real, test_fake)
+
+
+expression_logTPM <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+expression_logTPM <- log2(expression_logTPM+1)
+index <- c(setdiff(1:num_controlcell,test_fake),(num_controlcell+1):(num_controlcell+num_testcell),test_fake)
+expression_logTPM <- expression_logTPM[,index]
+
+
+
+
+
+
+similarity_data <- cor(expression_logTPM, method = "pearson")
+
+#library(doBy)
+  similarity_index <- apply(similarity_data,2, function(x){which.maxn(x,
+                                      (num_testcell+num_controlcell))})
+  similarity_index <- as.matrix(similarity_index[,(1+num_controlcell-10):(num_testcell+num_controlcell)])
+  list_create <- as.list(1: (num_testcell+10))
+  
+  list_function <- function(x){
+    similarity_index_ <- similarity_index[which(similarity_index[,
+                                  x]%in%c(1:(num_controlcell-10))),x]
+    return(similarity_index_)
+  }
+  
+  similarity_index <- as.data.frame(lapply(list_create,list_function))
+
+        
+test_index_ <- c(test_index[1:10]-391,992:1001)
+
+similarity_index <- similarity_index [test_index_]
+
+num_cell_control <- 8
+
+control_index <- lapply(similarity_index,function(df) df[1:num_cell_control])
+
+
+
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+setwd(path )
+saveRDS(control_index,"control_index.rds")
+
+setwd(path)
+saveRDS(test_index,"test_index.rds")
+
+```
+
+#### put into different model
+
+##### scDART
+```{r,eval=FALSE}
+
+
+start_time <- Sys.time()
+
+# put into the scDART model
+single_test_scDART <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  # combine as the total reads
+  data1 <- meth_control+unmeth_control
+  data2 <- meth_test+unmeth_test
+  
+  # calculate the mean p and the variance of the control data
+  
+  p_control <- rowSums(meth_control)/rowSums(data1)
+  
+  # find the site satisfies the three conditions
+  if (length(dim(meth_test)[2])==0){
+     # first condition
+      index_1 <- which(data2>=20)
+      
+      # second condition
+      p_test <- meth_test/data2
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1] 
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test>=2)
+      index <- index_4 [index_4 %in% index_3]
+  }else{
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
+      
+      # second condition
+      p_test <- meth_test[,i]/data2[,i]
+      index_2 <- which(p_test>=0.1&p_test<=0.95)
+      index_2 <- index_2[index_2 %in% index_1]
+      
+      
+      #third condition
+      index_3 <- which(p_test>=1.5*p_control)
+      index_3 <- index_3 [index_3 %in% index_2]
+      
+      #fourth condition
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
+    }
+    
+    
+    
+  }
+  
+  
+  return(index)
+  
+}
+
+res_scDART <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_scDART[[i]] <- single_test_scDART(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+res_scDART_ <- list()
+num_sites <- dim(meth_control)[1]
+
+for (i in 1:length(res_scDART)){
+  
+  
+  # res_scDART
+  
+  res_scDART_[[i]] <- rep(0,num_sites)
+  res_scDART_[[i]][res_scDART[[i]]] <- 1
+
+
+    
+  
+}
+
+
+
+
+end_time <- Sys.time()
+run_time_scDART <- end_time-start_time
+
+setwd(path )
+saveRDS(res_scDART_,"res_scDART_.rds")
+
+rm(res_scDART,res_scDART_)
+```
+
+
+##### DESeq2
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+
+#library(DESeq2)
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+  num <- dim(meth_control)[2]
+  
+  sizeFactor <- function(data) {
+  # make the elements no smaller than 0
+  data <- as.matrix(data)
+  
+  # first log
+  log_data <- log(data)
+  log_data[is.infinite(log_data)] <- NA
+  log_mean <- rowMeans(log_data)
+  log_s <- log_data-log_mean
+  
+  # then exp
+  s_size <- exp(apply(log_s,2,function(x)median(x,na.rm=TRUE)))
+  return(s_size)
+}
+
+  
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+    design = data.frame(
+                       Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~ Meth + Trt + Meth:Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = sizeFactor(cbind((meth_control+unmeth_control),
+                       (meth_test[,i]+unmeth_test[,i])))
+    
+    sizeFactors(dds) = rep(sf,2)
+    dds <- DESeq(dds, test = "Wald")
+    
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest") 
+  }
+    
+
+ 
+  
+  return(res)
+}
+
+res_DESeq2 <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_DESeq2[[i]] <-  DESeq2_test(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+end_time <- Sys.time()
+run_time_DESeq2 <- end_time-start_time
+
+setwd(path )
+saveRDS(res_DESeq2,"res_DESeq2.rds")
+
+rm(res_DESeq2)
+```
+
+##### edgeR
+```{r,eval=FALSE}
+set.seed(1)
+start_time <- Sys.time()
+#library("edgeR")
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+  num <- dim(meth_control)[2]
+  
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control,meth_test[,i],unmeth_control,unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control+unmeth_control),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~0+group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+res_edgeR <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- data.frame(meth[,test_index[i]])
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- data.frame(unmeth[,test_index[i]])
+  
+  res_edgeR[[i]] <-  edgeR_test(meth_control,meth_test,unmeth_control,unmeth_test)
+  
+}
+
+
+
+end_time <- Sys.time()
+run_time_edgeR <- end_time-start_time
+
+
+setwd(path)
+saveRDS(res_edgeR,"res_edgeR.rds")
+rm(res_edgeR)
+
+```
+
+
+##### SigRM
+
+###### SigRM_locfit
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_locfit <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_locfit[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test,
+                                                   method_dispersion = "locfit")) 
+  
+}
+
+end_time <- Sys.time()
+run_time_SigRM_locfit <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_locfit,"res_SigRM_locfit.rds")
+rm(res_SigRM_locfit)
+
+```
+
+###### SigRM_unbiased
+```{r,eval=FALSE}
+start_time <- Sys.time()
+res_SigRM_unbiased <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_unbiased[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test)) 
+  
+}
+end_time <- Sys.time()
+run_time_SigRM_unbiased <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_unbiased,"res_SigRM_unbiased.rds")
+rm(res_SigRM_unbiased)
+
+```
+
+###### SigRM_mle
+```{r,eval=FALSE}
+start_time <- Sys.time()
+# put into the SigRM model 
+#library(SigRM)
+res_SigRM_mle <-  list()
+for (i in 1:length(test_index)){
+  meth_control <- meth[,control_index[[i]]]
+  meth_test <- meth[,test_index[i]]
+  unmeth_control <- unmeth[,control_index[[i]]]
+  unmeth_test <- unmeth[,test_index[i]]
+  
+  res_SigRM_mle[[i]] <- as.data.frame(SigRMtest(meth_control,meth_test,unmeth_control,unmeth_test, method_dispersion = "mle")) 
+  
+}
+end_time <- Sys.time()
+run_time_SigRM_mle <- end_time-start_time
+
+setwd(path)
+saveRDS(res_SigRM_mle,"res_SigRM_mle.rds")
+rm(res_SigRM_mle)
+
+```
+#### runtime 
+```{r,eval=FALSE}
+setwd(path)
+runtime <- data.frame(run_time_scDART, run_time_DESeq2, run_time_edgeR, run_time_SigRM_locfit, run_time_SigRM_unbiased, run_time_SigRM_mle)
+save(runtime,file = "runtime.RData")
+```
+
+
+#### ks test 
+```{r,eval=FALSE}
+rm(list=ls())
+num_cell_control <- 8
+
+path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+
+res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
+res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
+res_SigRM_locfit <- readRDS(paste0(path,"/res_SigRM_locfit.rds"))
+res_SigRM_mle <- readRDS(paste0(path,"/res_SigRM_mle.rds"))
+res_SigRM_unbiased <- readRDS(paste0(path,"/res_SigRM_unbiased.rds"))
+res_edgeR <- readRDS(paste0(path,"/res_edgeR.rds"))
+
+control_index <- readRDS(paste0(path,"/control_index.rds"))
+test_index <- readRDS(paste0(path,"/test_index.rds"))
+
+
+
+# only see the sites both have the results
+index_nona <- list()
+
+for (i in 1: length(res_DESeq2)){
+  
+  index_nona1 <- which(!is.na(res_DESeq2[[i]][[1]][,5]))
+  index_nona2 <- which(!is.na(res_SigRM_unbiased[[i]][,5]))
+  index_nona3 <- which(!is.na(res_edgeR[[i]][[1]][,4]))
+  index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
+}
+setwd(path)
+saveRDS(index_nona,"index_nona.rds")
+
+res_SigRM_unbiased_ks <- c()
+res_SigRM_locfit_ks <- c()
+res_SigRM_mle_ks <- c()
+res_scDART_ks <- c()
+res_DESeq2_ks <- c()
+
+ks_function <- function(x,y){
+  
+  ks_test <- ks.test(x,y)
+  l1 <- length(ks_test$data$x)
+  l2 <- length(ks_test$data$y)
+  D <- ks_test$statistic
+  ks_staitics <- D/sqrt(1/l1+1/l2)
+  
+  return(ks_staitics)
+  
+}
+
+
+ks_list_function <- function (x,index_x,y,index_y){
+  x <- Map(function(x, index_x) x[index_x], x, index_x)
+  y <- Map(function(y, index_y) y[index_y], y, index_y)
+
+  l_y <- length(y)
+  ks_list <- list()
+  for (i in 1:l_y){
+    a <- lapply(x,function(x,index_x) ks_function(x,y[[i]]))
+    ks_list <- c(ks_list,a)
+  }
+  return(ks_list)
+}
+
+
+
+
+
+   index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+  
+    res_SigRM_locfit_pvalue <- lapply(res_SigRM_locfit,function(df) df[,5])
+    
+    res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit_pvalue[1:10],index_nona[1:10],res_SigRM_locfit_pvalue[11:20],index_nona[11:20])
+    
+    res_SigRM_mle_pvalue <- lapply(res_SigRM_mle,function(df) df[,5])
+  
+    res_SigRM_mle_ks <- ks_list_function(res_SigRM_mle_pvalue[1:10],index_nona[1:10],res_SigRM_mle_pvalue[11:20],index_nona[11:20])
+    
+    res_SigRM_unbiased_pvalue <- lapply(res_SigRM_unbiased,function(df) df[,5])
+    
+    res_SigRM_unbiased_ks <- ks_list_function(res_SigRM_unbiased_pvalue[1:10],index_nona[1:10],res_SigRM_unbiased_pvalue[11:20],index_nona[11:20])
+     
+    res_scDART_ks <- ks_list_function(res_scDART_[1:10],index_nona[1:  10],res_scDART_[11:20],index_nona[
+    11:20])
+  
+    res_DESeq2_pvalue <- lapply(res_DESeq2,function(df) df[[1]][,5])
+ 
+  
+    res_DESeq2_ks <- ks_list_function(res_DESeq2_pvalue[1:10],index_nona[1:  10],res_DESeq2_pvalue[11:20],index_nona[11:20])
+  
+    res_edgeR_pvalue <- lapply(res_edgeR,function(df) df[[1]][,4])
+ 
+  
+    res_edgeR_ks <- ks_list_function(res_edgeR_pvalue[1:10],index_nona[1:  10],res_edgeR_pvalue[11:20],index_nona[11:20])
+    
+   
+
+
+kstest_data_origin <- matrix(c(as.numeric(res_SigRM_locfit_ks),as.numeric(res_SigRM_mle_ks),as.numeric(res_SigRM_unbiased_ks),as.numeric(res_scDART_ks), as.numeric(res_DESeq2_ks),as.numeric(res_edgeR_ks),
+                     rep("SigRM_locfit",100),rep("SigRM_mle",100),rep("SigRM_unbiased",100),rep("scDART",100),rep("DESeq2",100),
+                     rep("edgeR",100)),ncol=2)
+kstest_data_origin  <- data.frame(kstest_data_origin)
+colnames(kstest_data_origin ) <- c("ks","method")
+kstest_data_origin$ks <- as.numeric(kstest_data_origin$ks)
+
+
+
+setwd(path)
+saveRDS(kstest_data_origin,"kstest_data_origin.rds")
+
+```
+
+
+## plot the comparison of the different methods
+
+### real data (random vs sim)
+```{r,eval=FALSE}
+kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
+kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+
+kstest_data_combine <- rbind(kstest_data_sim_2[1:100,],kstest_data_random_2[301:600,],kstest_data_sim_4[1:100,],kstest_data_random_4[301:600,],kstest_data_sim_8[1:100,],kstest_data_random_8[301:600,])
+
+kstest_data_combine$num <- c(rep(2,400),rep(4,400),rep(8,400))
+kstest_data_combine$num <-as.factor(kstest_data_combine$num)
+
+kstest_data_combine$method[kstest_data_combine$method=="SigRM_locfit"] <- "SigRM"
+kstest_data_combine$method[kstest_data_combine$method=="scDART"] <- "Bullseye"
+
+kstest_data_combine$ks <- as.numeric(kstest_data_combine$ks)
+
+
+#library(ggh4x)
+
+kstest_data_combine$method <- factor(kstest_data_combine$method,levels =c("Bullseye","edgeR","DESeq2","SigRM"))
+
+plot_real_ran_sim <- ggplot() +  geom_boxplot(data=kstest_data_combine,aes(y=log2(ks+1),x=method,color = method),outlier.shape = NA)+
+  facet_wrap( ~ num, scales = "free_y") +
+scale_y_continuous(expand = c(0, 0))+ facetted_pos_scales(
+  y = list(num == "2" ~ scale_y_continuous(limits=c(2.8,7.8)),
+           num == "4" ~ scale_y_continuous(limits=c(2.8,7.8)),
+           num == "8" ~ scale_y_continuous(limits=c(2.8,7.8))))+guides(x = guide_axis(angle = -45))
+#
+
+plot_real_ran_sim
+
+```
+
+
+
+
+
+### compare random and sim in SigRM 
+```{r,eval=FALSE}
+
+
+
+kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
+
+kstest_data_random <- rbind(kstest_data_random_2,kstest_data_random_4,kstest_data_random_8)
+
+kstest_data_random$num <- c(rep(2,600),rep(4,600),rep(8,600))
+kstest_data_random$num <-as.factor(kstest_data_random$num)
+
+
+kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+
+
+
+kstest_data_sim <- rbind(kstest_data_sim_2,kstest_data_sim_4,kstest_data_sim_8)
+
+kstest_data_sim$num <- c(rep(2,600),rep(4,600),rep(8,600))
+kstest_data_sim$num <-as.factor(kstest_data_sim$num)
+
+
+kstest_data <- rbind(kstest_data_random,kstest_data_sim)
+
+kstest_data $sample <- c(rep("random",1800),rep("similar",1800))
+kstest_data $sample <- as.factor(kstest_data $sample)
+#library(dplyr)
+
+
+
+kstest_data_SigRM_locfit <- kstest_data%>% filter(method == "SigRM_locfit")
+
+kstest_data_SigRM_unbiased <- kstest_data%>% filter(method == "SigRM_unbiased")
+
+
+kstest_data_SigRM_mle <- kstest_data%>% filter(method == "SigRM_mle")
+
+kstest_data_DESeq2 <- kstest_data%>% filter(method == "DESeq2")
+
+kstest_data_edgeR <- kstest_data%>% filter(method == "edgeR")
+
+kstest_data_scDART <- kstest_data%>% filter(method == "scDART")
+kstest_data_scDART$method <- "Bullseye"
+
+
+kstest_data_SigRM <- as.data.frame(rbind(kstest_data_SigRM_locfit,
+                 kstest_data_SigRM_unbiased,kstest_data_SigRM_mle))
+
+kstest_data_others <- as.data.frame(rbind(kstest_data_DESeq2,
+                 kstest_data_edgeR,kstest_data_scDART))
+
+#library(ggplot2)
+
+plot_compare_ran_sim_SigRM <- ggplot(kstest_data_SigRM, aes( y=log2(ks+1),color=sample,x=num)) +
+  geom_boxplot(outlier.shape = NA)+facet_wrap(vars(method), scales = "free")
+
+plot_compare_ran_sim_SigRM
+
+
+
+
+```
+
+
+### compare random and sim in  other methods
+```{r,eval=FALSE}
+
+kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
+
+kstest_data_random <- rbind(kstest_data_random_2,kstest_data_random_4,kstest_data_random_8)
+
+kstest_data_random$num <- c(rep(2,600),rep(4,600),rep(8,600))
+kstest_data_random$num <-as.factor(kstest_data_random$num)
+
+
+kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+
+
+
+kstest_data_sim <- rbind(kstest_data_sim_2,kstest_data_sim_4,kstest_data_sim_8)
+
+kstest_data_sim$num <- c(rep(2,600),rep(4,600),rep(8,600))
+kstest_data_sim$num <-as.factor(kstest_data_sim$num)
+
+
+kstest_data <- rbind(kstest_data_random,kstest_data_sim)
+
+kstest_data $sample <- c(rep("random",1800),rep("similar",1800))
+kstest_data $sample <- as.factor(kstest_data $sample)
+#library(dplyr)
+
+
+
+kstest_data_SigRM_locfit <- kstest_data%>% filter(method == "SigRM_locfit")
+
+kstest_data_SigRM_unbiased <- kstest_data%>% filter(method == "SigRM_unbiased")
+
+
+kstest_data_SigRM_mle <- kstest_data%>% filter(method == "SigRM_mle")
+
+kstest_data_DESeq2 <- kstest_data%>% filter(method == "DESeq2")
+
+kstest_data_edgeR <- kstest_data%>% filter(method == "edgeR")
+
+kstest_data_scDART <- kstest_data%>% filter(method == "scDART")
+kstest_data_scDART$method <- "Bullseye"
+
+
+kstest_data_SigRM <- as.data.frame(rbind(kstest_data_SigRM_locfit,
+                 kstest_data_SigRM_unbiased,kstest_data_SigRM_mle))
+
+kstest_data_others <- as.data.frame(rbind(kstest_data_DESeq2,
+                 kstest_data_edgeR,kstest_data_scDART))
+
+#library(ggh4x)
+
+plot_app4 <- ggplot(kstest_data_others, aes( y=log2(ks+1),color=sample,x=num)) +
+  geom_boxplot(outlier.shape = NA)+facet_wrap(vars(method), scales = "free")+
+scale_y_continuous(expand = c(0, 0))+guides(x = guide_axis(angle = 45))+ facetted_pos_scales(
+  y = list(method == "Bullseye" ~ scale_y_continuous(limits=c(2.8,4)),
+           method == "DESeq2"~ scale_y_continuous(limits=c(3.2,7.2)),
+           method == "edgeR" ~ scale_y_continuous(limits=c(2.8,5.5))))
+
+plot_app4
+```
+
+
+
+
+
+### real data (sim vs sim)
+```{r,eval=FALSE}
+
+kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
+kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+
+kstest_data_combine <- rbind(kstest_data_random_2[1:100,],kstest_data_random_2[301:600,],kstest_data_random_4[1:100,],kstest_data_random_4[301:600,],kstest_data_random_8[1:100,],kstest_data_random_8[301:600,],kstest_data_sim_2[1:100,],kstest_data_sim_2[301:600,],kstest_data_sim_4[1:100,],kstest_data_sim_4[301:600,],kstest_data_sim_8[1:100,],kstest_data_sim_8[301:600,])
+
+kstest_data_combine$num <- rep(c(rep(2,400),rep(4,400),rep(8,400)),2)
+kstest_data_combine$num <-as.factor(kstest_data_combine$num)
+
+kstest_data_combine$control <- c(rep("random",1200),rep("sim",1200))
+kstest_data_combine$control <-as.factor(kstest_data_combine$control)
+
+kstest_data_combine$method[kstest_data_combine$method=="SigRM_locfit"] <- "SigRM"
+kstest_data_combine$method[kstest_data_combine$method=="scDART"] <- "Bullseye"
+
+kstest_data_combine$ks <- as.numeric(kstest_data_combine$ks)
+
+
+
+
+#library(ggh4x)
+
+plot_app5 <- ggplot() +  geom_boxplot(data=kstest_data_combine,aes(y=log2(ks+1),x=num,color = method),outlier.shape = NA)+
+  facet_wrap( ~ control, scales = "free_y") +
+scale_y_continuous(expand = c(0, 0))+ facetted_pos_scales(
+  y = list(control == "random" ~ scale_y_continuous(limits=c(2.8,7)),
+           control == "sim" ~ scale_y_continuous(limits=c(2.8,7.8))))#+guides(x = guide_axis(angle = 45))
+#
+
+plot_app5
+```
+### cor relation plot
+```{r,eval=FALSE}
+
+
+res_SigRM_locfit <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/res_SigRM_locfit.rds")
+res <- rbind(res_SigRM_locfit[[1]],res_SigRM_locfit[[2]],res_SigRM_locfit[[3]],res_SigRM_locfit[[4]],res_SigRM_locfit[[5]],
+             res_SigRM_locfit[[6]],res_SigRM_locfit[[7]],res_SigRM_locfit[[8]],res_SigRM_locfit[[9]],res_SigRM_locfit[[10]])
+
+
+my_data <- cbind(as.numeric(log2(res[[6]]+1)),res[[5]],res[[3]],res[[4]],res[[8]])
+colnames(my_data) <- c("expression","p-value","RR","OR","TCR")
+my_data <- as.data.frame(my_data)
+my_data$beta <- as.numeric(res[[1]])
+my_data <- my_data[which(!is.na(rowSums(my_data))),]
+my_data$M <- log2((my_data$beta+0.001)/(1-my_data$beta+0.001))
+
+set.seed(10)
+my_data_ <-my_data [sample(1:dim(my_data)[1],1000),]
+
+
+
+
+#library("psych")
+
+pairs.panels(my_data_, ellipses=TRUE,scale = FALSE,hist.col = "#00AFBB",
+             stars=FALSE,method = "spearman",digits=3,factor=2,alpha=0.5)
+```
+
+
+# pesudo time inference
+
+## validation
+```{r,eval=FALSE}
+
+#library(ggplot2)
+original_data <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+original_data <- original_data [,-c(1:391)]
+
+g1_s_genes <- c("CCNE1", "CCNE2","CDC25A","CDC6","E2F1","MCM2","MCM6","NPAT","PCNA","SLBP","SMARCD3","MAX", "ULK4")  # 选基因
+s_genes <- c("BRCA1","RRM1","RRM2", "TYMS","MCM5", "DTL") 
+g2_m_genes <- c("CCNA2","CCNF", "TOP2A","BIRC5","BUB1","BUB1B", "CCNB1", "CCNB2", "CDC20", "CDC25B","CDKN2D","CENPA","CKS2","PLK1","AURKA")  
+
+## step2 : change to ensebl
+
+#library(org.Hs.eg.db)
+#library(clusterProfiler)
+#library(stringi)
+
+g1_s_genes_ENSG <- bitr(g1_s_genes, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+s_genes_ENSG <- bitr(s_genes, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+g2_m_genes_ENSG <-bitr(g2_m_genes, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+
+
+
+#choose the selected genes from original data
+g1_matrix <- original_data[g1_s_genes_ENSG$ENSEMBL,]
+s_martrix <- original_data[s_genes_ENSG$ENSEMBL,]
+g2_martrix <- original_data[g2_m_genes_ENSG$ENSEMBL,] 
+#combine them together
+g1ands <- rbind(g1_matrix,s_martrix)
+select_TPM <- rbind(g1ands,g2_martrix)
+
+select_TPM <- apply(select_TPM,2,as.numeric)
+
+
+select_TPM <- select_TPM [c(7,9,10,16,18,19,22,26,34),]
+# step 1: rescale
+exp_log2 = log2(select_TPM + 1)
+
+
+# step 2: calculate some rescaled phase likelihood based on a specific gene marker
+for (s in 1:991) {
+  exp_log2[, s] = (exp_log2[, s] - mean(exp_log2[, s] ))/sd(exp_log2[, s])
+}
+GeneRatio <- exp_log2
+
+a <-cor(t(GeneRatio))
+index_g1 <- c(1:3)#1:length(g1_s_genes_ENSG$ENSEMBL)
+index_s <- c(4:6)#(1+length(g1_s_genes_ENSG$ENSEMBL)):(length(g1_s_genes_ENSG$ENSEMBL)+length(s_genes_ENSG$ENSEMBL))
+index_g2 <- c(7:9)#(length(g1_s_genes_ENSG$ENSEMBL)+length(s_genes_ENSG$ENSEMBL)+1):(length(g1_s_genes_ENSG$ENSEMBL)+length(s_genes_ENSG$ENSEMBL)+length(g2_m_genes_ENSG$ENSEMBL))
+
+
+s1 <- apply(a[index_g1,],2,sum)-1
+s2 <- apply(a[index_s,],2,sum)-1
+s3 <- apply(a[index_g2,],2,sum)-1
+s <- rbind(s1,s2,s3)
+
+sum_g1 <- (colSums(a[index_g1,])-1) /length(index_g1)
+sum_s <- (colSums(a[index_s,]) -1) /length(index_s)
+sum_g2 <- (colSums(a[index_g2,]) -1) /length(index_g2)
+
+score_m <- rbind(sum_g1,sum_s,sum_g2)
+
+
+
+# step 3: merge the likelihood from all marker genes of a phase
+# For example, phase M1 with marker gene index marker1 = 1:3, M2 index marker2 = 4:6, M3 index marker3 = 7:9
+GeneRatio <- t(apply(GeneRatio,1,function(x) (x-mean(x))/sd(x)))
+
+M1_score <- colMeans(GeneRatio[index_g1,]) # "CDC25A" "NPAT" "MAX"
+M2_score <- colMeans(GeneRatio[index_s,]) # "RRM1" "RRM2" "MCM5" "DTL"
+M3_score <- colMeans(GeneRatio[index_g2,]) # "TOP2A" "BUB1" "BUB1B" "CCNB1"  "CCNB2"  "CDC20" "CENPA" "PLK1" "AURKA" 
+
+M1_score <- (M1_score-mean(M1_score))/sd(M1_score)
+M2_score <- (M2_score-mean(M2_score))/sd(M2_score)
+M3_score <- (M3_score-mean(M3_score))/sd(M3_score)
+
+score_matrix <- rbind(M1_score,M2_score,M3_score)
+b <- cor(t(score_matrix))
+
+
+
+
+
+
+# Step 4: calculate the posterior
+plot(density(M1_score))
+plot(density(M2_score))
+plot(density(M3_score))
+length(which(M1_score>=1&M2_score<=0.5&M3_score<=0.5))
+length(which(M2_score>=1&M1_score<=0&M3_score<=0))
+length(which(M3_score>=1.2&M1_score<=0&M2_score<=0))
+
+score <- t(rbind(M1_score,M2_score,M3_score))
+
+
+M1_pos <- M1_score  - 0.5*M2_score-0.5*M3_score
+M2_pos <- M2_score  - 0.5*M1_score-0.5*M3_score
+M3_pos <- M3_score  - 0.5*M1_score-0.5*M2_score
+
+
+# Step 5: assign reliable labels to cells, with respect to a pre-defined cutoff
+
+cutoff = 1.5
+
+g1_labels <- names(M1_pos[M1_pos >= cutoff]) # those cells belong to M1
+S_labels <- names(M2_pos[M2_pos >= cutoff])# those cells belong to M2
+g2_labels <- names(M3_pos[M3_pos >= cutoff])# those cells belong to M3
+
+
+
+
+#g1_labels <- names(M1_score)[which(M1_score>=1&M2_score<=0.5&M3_score<=0.5)]# those cells belong to M1
+#S_labels <- names(M1_score)[which(M2_score>=1&M1_score<=0&M3_score<=0)]# those cells belong to M2
+#g2_labels <- names(M1_score)[which(M3_score>=1.2&M1_score<=0&M2_score<=0)]# those cells belong to M3
+
+
+
+
+# Step 6:dimension reduction
+allpca <- prcomp(t(exp_log2),center = T,scale. = T)
+pca_result <- allpca$x
+pca_result <- as.data.frame(pca_result)
+
+g1 <- pca_result[g1_labels,1:2]
+g1 <- as.data.frame(g1)
+s <- pca_result[S_labels,1:2]
+s <- as.data.frame(s)
+g2_m <- pca_result[g2_labels,1:2]
+g2_m <- as.data.frame(g2_m)
+other <- pca_result[-which(rownames(pca_result)%in%c(g1_labels,S_labels,g2_labels)),1:2]
+other <- as.data.frame(other)
+
+g1$phase <- "g1"
+s$phase <- "s"
+g2_m$phase <- "g2/m"
+other$phase <- "other"
+data_plot_2 <- rbind(other,g1,s,g2_m)
+
+plot_markergene <- ggplot(data_plot_2,aes(x = PC1, y = PC2,color=phase))+
+  #geom_point(data =pca_result,aes(x = PC1,y = PC2),size = 1)+ 
+  geom_point()+scale_color_manual(values = c("other"="#C0C0C0","g2/m" = "#e20612","s" = "#00b0eb","g1" = "#ffd401") )+
+  labs(title = "PCA (Cells)", x = "PC1", y = "PC 2")+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank())
+#geom_text(data = s, aes(x = PC1, y = PC2, label = rownames(s)), vjust = -0.5, hjust = -0.5, size = 1)
+
+plot_markergene
+
+pca_result_expression <- pca_result
+
+
+
+
+
+
+#library(TSCAN)
+
+input <- exp_log2
+
+#input <- input[which(!is.na(rowSums(input))),]
+
+#input <- t(apply(input,1,function(x) (x-mean(x))/sd(x)))
+#input <- apply(input,2,function(x) (x-mean(x))/sd(x))
+colnames(input) <- colnames(original_data)
+
+lpsmclust <- exprmclust(input ,clusternum = 2:9, reduce = T)
+
+## step6 : pca
+pca_result <- lpsmclust$pcareduceres
+
+data_plot_3 <- lpsmclust
+
+
+plot()
+```
+
+## predict use labeled cells
+```{r,eval=FALSE}
+
+## step1 : choose gene
+g1_s_genes <- c("MCM6", "PCNA", "SLBP")
+s_genes <- c( "RRM2", "DTL","MCM5") 
+g2_m_genes <- c("TOP2A",  "CCNB1", "AURKA" )  
+
+## step2 : change to ensebl
+
+#library(org.Hs.eg.db)
+#library(clusterProfiler)
+#library(stringi)
+
+g1_s_genes_ENSG <- bitr(g1_s_genes, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+s_genes_ENSG <- bitr(s_genes, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+g2_m_genes_ENSG <-bitr(g2_m_genes, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+
+
+## step3 : select the tpm data
+select_gene <- c(g1_s_genes_ENSG$ENSEMBL,s_genes_ENSG$ENSEMBL,g2_m_genes_ENSG$ENSEMBL)
+
+## step4 : select sites
+
+
+# get the position of the gene:
+expression <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/origin/gene_expression_73_control.rds")
+
+# get the index of the genes
+index <- c()
+for ( i in 1:length(select_gene)){
+  index[i] <-which(expression[[1]]$Gene.ID%in%select_gene[i])
+}
+
+# get the position of the genes
+position_start <- expression[[1]]$Start[index]
+position_end <- expression[[1]]$End[index]
+
+
+# get the sites information
+SNP_all_51w <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/SNP_all_51w.rds")
+
+# the sites position
+testSNP_all_position <- SNP_all_51w@ranges@start
+
+# match the site to the gene
+index_list <- list()
+for ( i in 1:length(select_gene)){
+  index_list[[i]] <-which(testSNP_all_position%in%(position_start[i]:position_end[i]))
+  
+  names(index_list[[i]]) <- paste0("gene_",i,"_",1:length(index_list[[i]]))
+}
+
+# all index of sites
+index_site <- unlist(index_list)
+site_length <- unlist(lapply(index_list, length))
+
+# load the data
+res_all <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res_all_4_sim/res_list.rds")
+
+
+# get the TCR matrix 
+res_all_TCR <- as.data.frame(lapply(res_all,function(df) df[[8]])) 
+res_all_TCR_index_site <- res_all_TCR[index_site,]
+#res_all_TCR_index_site [res_all_TCR_index_site<=0] <-0
+# get the RR matrix 
+res_all_RR <- as.data.frame(lapply(res_all,function(df) df[[3]])) 
+res_all_RR_index_site <- res_all_RR[index_site,]
+
+# get the OR matrix 
+res_all_OR <- as.data.frame(lapply(res_all,function(df) df[[4]])) 
+res_all_OR_index_site <- res_all_OR[index_site,]
+res_all_OR_index_site [is.na(res_all_OR_index_site)] <-0
+res_all_OR_index_site [res_all_OR_index_site<=0] <-0
+#rm(res_all)
+
+
+
+# select the OR highest 50% for each gene
+res_all_OR_index_site_mean <- apply(res_all_OR_index_site,1,function(x) mean(x,na.rm=TRUE))
+
+hight_num <- 0.5
+#round(hight_num*site_length[[1]])
+order_50_list <- list()
+order_50_list[[1]] <-order(res_all_OR_index_site_mean[1:site_length[[1]]],decreasing=TRUE)[1:50]
+order_50_list[[1]] <- c(1:site_length[[1]])[order_50_list[[1]]]
+
+for (i in 2:9){
+  order_50_list[[i]] <-order(res_all_OR_index_site_mean[(sum(unlist(site_length[1:(i-1)]))+1):sum(unlist(site_length[1:i]))],decreasing=TRUE)[1:50]
+  order_50_list[[i]] <- c((sum(unlist(site_length[1:(i-1)]))+1):sum(unlist(site_length[1:i]))) [order_50_list[[i]]]
+}
+
+
+
+# get the each 50% sites for the 9 gene
+
+res_meta_OR_index_site_50_list <- list()
+for (i in 1:9) {
+  res_meta_OR_index_site_50_list[[i]] <- apply(res_all_OR_index_site [order_50_list[[i]],],2,function(x) mean(x,na.rm=TRUE))
+}
+res_meta_OR_index_site_50_list <- t(as.data.frame(res_meta_OR_index_site_50_list))
+colnames(res_meta_OR_index_site_50_list) <- colnames(original_data)
+rownames(res_meta_OR_index_site_50_list) <- NULL
+
+
+
+
+#library(TSCAN)
+
+input <- res_meta_OR_index_site_50_list
+input[is.na(input)] <- 0
+
+#input <- input[which(!is.na(rowSums(input))),]
+
+#input <- t(apply(input,1,function(x) (x-mean(x))/sd(x)))
+#input <- apply(input,2,function(x) (x-mean(x))/sd(x))
+colnames(input) <- colnames(original_data)
+
+lpsmclust <- exprmclust(input ,clusternum = 4, reduce = T)
+
+## step6 : pca
+pca_result <- lpsmclust$pcareduceres
+g1 <- pca_result[g1_labels,1:dim( lpsmclust$pcareduceres)[2]]
+g1 <- as.data.frame(g1)
+s <- pca_result[S_labels,1:dim( lpsmclust$pcareduceres)[2]]
+s <- as.data.frame(s)
+g2 <- pca_result[g2_labels,1:dim( lpsmclust$pcareduceres)[2]]
+g2 <- as.data.frame(g2)
+other <- pca_result[-which(rownames(pca_result)%in%c(g1_labels,S_labels,g2_labels)),1:dim( lpsmclust$pcareduceres)[2]]
+other <- as.data.frame(other)
+
+plot1<- plotmclust(lpsmclust,show_cell_names = F)+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank(),axis.text.x = element_blank())
+
+g1$phase <- "g1"
+s$phase <- "s"
+g2$phase <- "g2"
+other$phase <- "other"
+data_plot <- rbind(other,g1,s,g2)
+
+plot2<- ggplot()+
+  #geom_point(data =pca_result,aes(x = PC1,y = PC2),size = 1)+ 
+  geom_point(data=data_plot,aes(x = PC1, y = PC2,color=phase),size=3)+scale_color_manual(values = c("g1" = "#ffd401","s" = "#00b0eb","g2" = "#e20612","other" = "#C0C0C0") )+
+  labs(title = "PCA (Cells)", x = "PC1", y = "PC 2")+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank())#+stat_ellipse(data=data_plot_cluster,  geom = "polygon",level=0.9,     linetype = 1,size=0.5,        aes(x = PC1, y = PC2,fill=cluster),alpha=0.3,      show.legend = T,segments = 20)
+
+
+
+
+
+data_plot_cluster <- pca_result
+
+
+lpsmclust_1 <- names(which(lpsmclust$clusterid==1))
+lpsmclust_2 <- names(which(lpsmclust$clusterid==2))
+lpsmclust_3 <- names(which(lpsmclust$clusterid==3))
+lpsmclust_4 <- names(which(lpsmclust$clusterid==4))
+data_plot_cluster_1 <- as.data.frame(data_plot_cluster[lpsmclust_1,])
+data_plot_cluster_2 <- as.data.frame(data_plot_cluster[lpsmclust_2,])
+data_plot_cluster_3 <- as.data.frame(data_plot_cluster[lpsmclust_3,])
+data_plot_cluster_4 <- as.data.frame(data_plot_cluster[lpsmclust_4,])
+data_plot_cluster_1$state <- "1"
+data_plot_cluster_2$state <- "2"
+data_plot_cluster_3$state <- "3"
+data_plot_cluster_4$state <- "4"
+data_plot_cluster <- rbind(data_plot_cluster_1,data_plot_cluster_2,data_plot_cluster_3,data_plot_cluster_4)
+data_plot_cluster <- as.data.frame(data_plot_cluster)
+
+
+center_1 <- apply(data_plot_cluster_1[,1:2],2,mean)
+center_2 <- apply(data_plot_cluster_2[,1:2],2,mean)
+center_3 <- apply(data_plot_cluster_3[,1:2],2,mean)
+center_4 <- apply(data_plot_cluster_4[,1:2],2,mean)
+center <- as.data.frame(rbind(center_2,center_3))
+colnames(center) <- c("x","y")
+center2 <- as.data.frame(rbind(center_1,center_4))
+colnames(center2) <- c("x","y")
+center3 <- as.data.frame(rbind(center_2,center_4))
+colnames(center3) <- c("x","y")
+
+plot1 <- plot1+xlab("PC1")+ylab("PC2")
+plot2 <- plot2+theme(plot.title =element_blank())
+plot3 <- plot2+stat_ellipse(data=data_plot_cluster,level=0.9,     linetype = 1,size=2,        aes(x = PC1, y = PC2,fill=state),alpha=0.5,segments = 50,geom = "polygon")+annotate("text", label = "1", x = center_1[1], y = center_1[2], size = 6, colour = "black")+annotate("text", label = "2", x = center_2[1], y = center_2[2], size = 6, colour = "black")+annotate("text", label = "3", x = center_3[1], y = center_3[2], size = 6, colour = "black")+annotate("text", label = "4", x = center_4[1], y = center_4[2], size = 6, colour = "black")+geom_line(data=center,aes(x = x, y = y),size=1)+geom_line(data=center2,aes(x = x, y = y),size=1)+geom_line(data=center3,aes(x = x, y = y),size=1)+theme(
+plot.title =element_blank())
+
+plot1
+plot2
+plot3
+
+
+plot_markergene
+
+label_1_data <- pca_result_expression[lpsmclust_1,1:2]
+label_1_data<- as.data.frame(label_1_data)
+label_2_data <- pca_result_expression[lpsmclust_2,1:2]
+label_2_data<- as.data.frame(label_2_data)
+label_3_data <- pca_result_expression[lpsmclust_3,1:2]
+label_3_data<- as.data.frame(label_3_data)
+label_4_data <- pca_result_expression[lpsmclust_4,1:2]
+label_4_data<- as.data.frame(label_4_data)
+
+label_1_data$state <- "1"
+label_2_data$state <- "2"
+label_3_data$state <- "3"
+label_4_data$state <- "4"
+data_plot_2 <- rbind(label_4_data,label_1_data,label_2_data,label_3_data)
+
+plot_markergene2 <- ggplot(data_plot_2,aes(x = PC1, y = PC2,color=state))+
+  #geom_point(data =pca_result,aes(x = PC1,y = PC2),size = 1)+ 
+  geom_point()+scale_color_manual(values = c("1" = "#e20612","2" = "#00b0eb","3" = "#ffd401","4"="#C0C0C0") )+
+  labs(title = "PCA (Cells)", x = "PC1", y = "PC 2")+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank())
+#geom_text(data = s, aes(x = PC1, y = PC2, label = rownames(s)), vjust = -0.5, hjust = -0.5, size = 1)
+
+plot_markergene2
+```
+
+## Fisher exact test
+# regulate network
+```{r,eval=FALSE}
+data <- readRDS("D:/data/SMART_3/preprocess2/data_plot_case_study1.rds")
+data <- data[,3:4]
+colnames(data) <- c("gene expression","methylation level")
+table_gene_methylation <- table(data)
+fisher_pvalue <- matrix(NA,4,4)
+fisher_odds_ratio <- matrix(NA,4,4)
+
+
+table_gene_methylation_g1_1 <- matrix(NA,2,2)
+table_gene_methylation_g1_1[1,1] <- table_gene_methylation[1,1]
+table_gene_methylation_g1_1[1,2] <- sum(table_gene_methylation[1,-1])
+table_gene_methylation_g1_1[2,1] <- sum(table_gene_methylation[-1,1])
+table_gene_methylation_g1_1[2,2] <- sum(table_gene_methylation[-1,-1])
+fisher_pvalue[1,1] <- fisher.test(table_gene_methylation_g1_1,alternative="greater")$p.value
+fisher_odds_ratio[1,1] <- fisher.test(table_gene_methylation_g1_1,alternative="greater")$estimate
+
+table_gene_methylation_g1_2 <- matrix(NA,2,2)
+table_gene_methylation_g1_2[1,1] <- table_gene_methylation[1,2]
+table_gene_methylation_g1_2[1,2] <- sum(table_gene_methylation[1,-2])
+table_gene_methylation_g1_2[2,1] <- sum(table_gene_methylation[-1,2])
+table_gene_methylation_g1_2[2,2] <- sum(table_gene_methylation[-1,-2])
+fisher_pvalue[1,2] <- fisher.test(table_gene_methylation_g1_2,alternative="greater")$p.value
+fisher_odds_ratio[1,2] <- fisher.test(table_gene_methylation_g1_2,alternative="greater")$estimate
+
+table_gene_methylation_g1_3 <- matrix(NA,2,2)
+table_gene_methylation_g1_3[1,1] <- table_gene_methylation[1,3]
+table_gene_methylation_g1_3[1,2] <- sum(table_gene_methylation[1,-3])
+table_gene_methylation_g1_3[2,1] <- sum(table_gene_methylation[-1,3])
+table_gene_methylation_g1_3[2,2] <- sum(table_gene_methylation[-1,-3])
+fisher_pvalue[1,3] <- fisher.test(table_gene_methylation_g1_3,alternative="greater")$p.value
+fisher_odds_ratio[1,3] <- fisher.test(table_gene_methylation_g1_3,alternative="greater")$estimate
+
+table_gene_methylation_g1_4 <- matrix(NA,2,2)
+table_gene_methylation_g1_4[1,1] <- table_gene_methylation[1,4]
+table_gene_methylation_g1_4[1,2] <- sum(table_gene_methylation[1,-4])
+table_gene_methylation_g1_4[2,1] <- sum(table_gene_methylation[-1,4])
+table_gene_methylation_g1_4[2,2] <- sum(table_gene_methylation[-1,-4])
+fisher_pvalue[1,4] <- fisher.test(table_gene_methylation_g1_4,alternative="greater")$p.value
+fisher_odds_ratio[1,4] <- fisher.test(table_gene_methylation_g1_4,alternative="greater")$estimate
+
+
+
+
+table_gene_methylation_s_1 <- matrix(NA,2,2)
+table_gene_methylation_s_1[1,1] <- table_gene_methylation[4,1]
+table_gene_methylation_s_1[1,2] <- sum(table_gene_methylation[4,-1])
+table_gene_methylation_s_1[2,1] <- sum(table_gene_methylation[-4,1])
+table_gene_methylation_s_1[2,2] <- sum(table_gene_methylation[-4,-1])
+fisher_pvalue[2,1] <- fisher.test(table_gene_methylation_s_1,alternative="greater")$p.value
+fisher_odds_ratio[2,1] <- fisher.test(table_gene_methylation_s_1,alternative="greater")$estimate
+
+table_gene_methylation_s_2 <- matrix(NA,2,2)
+table_gene_methylation_s_2[1,1] <- table_gene_methylation[4,2]
+table_gene_methylation_s_2[1,2] <- sum(table_gene_methylation[4,-2])
+table_gene_methylation_s_2[2,1] <- sum(table_gene_methylation[-4,2])
+table_gene_methylation_s_2[2,2] <- sum(table_gene_methylation[-4,-2])
+fisher_pvalue[2,2] <- fisher.test(table_gene_methylation_s_2,alternative="greater")$p.value
+fisher_odds_ratio[2,2] <- fisher.test(table_gene_methylation_s_2,alternative="greater")$estimate
+
+table_gene_methylation_s_3 <- matrix(NA,2,2)
+table_gene_methylation_s_3[1,1] <- table_gene_methylation[4,3]
+table_gene_methylation_s_3[1,2] <- sum(table_gene_methylation[4,-3])
+table_gene_methylation_s_3[2,1] <- sum(table_gene_methylation[-4,3])
+table_gene_methylation_s_3[2,2] <- sum(table_gene_methylation[-4,-3])
+fisher_pvalue[2,3] <- fisher.test(table_gene_methylation_s_3,alternative="greater")$p.value
+fisher_odds_ratio[2,3] <- fisher.test(table_gene_methylation_s_3,alternative="greater")$estimate
+
+table_gene_methylation_s_4 <- matrix(NA,2,2)
+table_gene_methylation_s_4[1,1] <- table_gene_methylation[4,4]
+table_gene_methylation_s_4[1,2] <- sum(table_gene_methylation[4,-4])
+table_gene_methylation_s_4[2,1] <- sum(table_gene_methylation[-4,4])
+table_gene_methylation_s_4[2,2] <- sum(table_gene_methylation[-4,-4])
+fisher_pvalue[2,4] <- fisher.test(table_gene_methylation_s_4,alternative="greater")$p.value
+fisher_odds_ratio[2,4] <- fisher.test(table_gene_methylation_s_4,alternative="greater")$estimate
+
+
+
+
+table_gene_methylation_g2m_1 <- matrix(NA,2,2)
+table_gene_methylation_g2m_1[1,1] <- table_gene_methylation[2,1]
+table_gene_methylation_g2m_1[1,2] <- sum(table_gene_methylation[2,-1])
+table_gene_methylation_g2m_1[2,1] <- sum(table_gene_methylation[-2,1])
+table_gene_methylation_g2m_1[2,2] <- sum(table_gene_methylation[-2,-1])
+fisher_pvalue[3,1] <- fisher.test(table_gene_methylation_g2m_1,alternative="greater")$p.value
+fisher_odds_ratio[3,1] <- fisher.test(table_gene_methylation_g2m_1,alternative="greater")$estimate
+
+table_gene_methylation_g2m_2 <- matrix(NA,2,2)
+table_gene_methylation_g2m_2[1,1] <- table_gene_methylation[2,2]
+table_gene_methylation_g2m_2[1,2] <- sum(table_gene_methylation[2,-2])
+table_gene_methylation_g2m_2[2,1] <- sum(table_gene_methylation[-2,2])
+table_gene_methylation_g2m_2[2,2] <- sum(table_gene_methylation[-2,-2])
+fisher_pvalue[3,2] <- fisher.test(table_gene_methylation_g2m_2,alternative="greater")$p.value
+fisher_odds_ratio[3,2] <- fisher.test(table_gene_methylation_g2m_2,alternative="greater")$estimate
+
+table_gene_methylation_g2m_3 <- matrix(NA,2,2)
+table_gene_methylation_g2m_3[1,1] <- table_gene_methylation[2,3]
+table_gene_methylation_g2m_3[1,2] <- sum(table_gene_methylation[2,-3])
+table_gene_methylation_g2m_3[2,1] <- sum(table_gene_methylation[-2,3])
+table_gene_methylation_g2m_3[2,2] <- sum(table_gene_methylation[-2,-3])
+fisher_pvalue[3,3] <- fisher.test(table_gene_methylation_g2m_3,alternative="greater")$p.value
+fisher_odds_ratio[3,3] <- fisher.test(table_gene_methylation_g2m_3,alternative="greater")$estimate
+
+table_gene_methylation_g2m_4 <- matrix(NA,2,2)
+table_gene_methylation_g2m_4[1,1] <- table_gene_methylation[2,4]
+table_gene_methylation_g2m_4[1,2] <- sum(table_gene_methylation[2,-4])
+table_gene_methylation_g2m_4[2,1] <- sum(table_gene_methylation[-2,4])
+table_gene_methylation_g2m_4[2,2] <- sum(table_gene_methylation[-2,-4])
+fisher_pvalue[3,4] <- fisher.test(table_gene_methylation_g2m_4,alternative="greater")$p.value
+fisher_odds_ratio[3,4] <- fisher.test(table_gene_methylation_g2m_4,alternative="greater")$estimate
+
+
+table_gene_methylation_other_1 <- matrix(NA,2,2)
+table_gene_methylation_other_1[1,1] <- table_gene_methylation[3,1]
+table_gene_methylation_other_1[1,2] <- sum(table_gene_methylation[3,-1])
+table_gene_methylation_other_1[2,1] <- sum(table_gene_methylation[-3,1])
+table_gene_methylation_other_1[2,2] <- sum(table_gene_methylation[-3,-1])
+fisher_pvalue[4,1] <- fisher.test(table_gene_methylation_other_1,alternative="greater")$p.value
+fisher_odds_ratio[4,1] <- fisher.test(table_gene_methylation_other_1,alternative="greater")$estimate
+
+table_gene_methylation_other_2 <- matrix(NA,2,2)
+table_gene_methylation_other_2[1,1] <- table_gene_methylation[3,2]
+table_gene_methylation_other_2[1,2] <- sum(table_gene_methylation[3,-2])
+table_gene_methylation_other_2[2,1] <- sum(table_gene_methylation[-3,2])
+table_gene_methylation_other_2[2,2] <- sum(table_gene_methylation[-3,-2])
+fisher_pvalue[4,2] <- fisher.test(table_gene_methylation_other_2,alternative="greater")$p.value
+fisher_odds_ratio[4,2] <- fisher.test(table_gene_methylation_other_2,alternative="greater")$estimate
+
+table_gene_methylation_other_3 <- matrix(NA,2,2)
+table_gene_methylation_other_3[1,1] <- table_gene_methylation[3,3]
+table_gene_methylation_other_3[1,2] <- sum(table_gene_methylation[3,-3])
+table_gene_methylation_other_3[2,1] <- sum(table_gene_methylation[-3,3])
+table_gene_methylation_other_3[2,2] <- sum(table_gene_methylation[-3,-3])
+fisher_pvalue[4,3] <- fisher.test(table_gene_methylation_other_3,alternative="greater")$p.value
+fisher_odds_ratio[4,3] <- fisher.test(table_gene_methylation_other_3,alternative="greater")$estimate
+
+table_gene_methylation_other_4 <- matrix(NA,2,2)
+table_gene_methylation_other_4[1,1] <- table_gene_methylation[3,4]
+table_gene_methylation_other_4[1,2] <- sum(table_gene_methylation[3,-4])
+table_gene_methylation_other_4[2,1] <- sum(table_gene_methylation[-3,4])
+table_gene_methylation_other_4[2,2] <- sum(table_gene_methylation[-3,-4])
+fisher_pvalue[4,4] <- fisher.test(table_gene_methylation_other_4,alternative="greater")$p.value
+fisher_odds_ratio[4,4] <- fisher.test(table_gene_methylation_other_4,alternative="greater")$estimate
+
+
+fisher_pvalue <- fisher_pvalue [,c(3,2,4,1)]
+fisher_odds_ratio <- fisher_odds_ratio [,c(3,2,4,1)]
+
+fisher_pvalue
+fisher_odds_ratio
+```

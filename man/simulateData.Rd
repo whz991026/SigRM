@@ -5,15 +5,15 @@
 \title{Simulate data function}
 \usage{
 simulateData(
-  n_Sites = 2000,
+  n_Sites = 5000,
   test_num = 100,
-  control_num = 300,
+  control_num = 100,
   min_expression = 0,
   max_expression = 4,
   expression_p = 10,
   per_me = 1/2,
   prange1 = c(0, 0.4),
-  prange2 = c(0.6, 0.8),
+  prange2 = c(0.6, 0.9),
   prange3 = c(0, 0.4),
   shape2 = 5
 )
@@ -50,7 +50,7 @@ unmeth read counts of test data)
 Simulate data function
 }
 \examples{
- data <- simulateData (test_num=10,control_num=30)
+ data <- simulateData (n_Sites=100,test_num=10,control_num=30)
 
 
 }

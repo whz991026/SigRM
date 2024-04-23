@@ -34,7 +34,7 @@
 #' @export
 #'
 #' @examples 
-#'  data <- simulateData (test_num=2,control_num=30)
+#'  data <- simulateData(n_Sites=100,test_num = 2,control_num = 10)
 #'  res <- quantification_level(data[[1]],data[[2]],data[[3]],data[[4]])
 quantification_level <- function(meth_control,meth_test,unmeth_control,unmeth_test,
                                  size.factor=NA,q=NA,adjust_1=1e-5,adjust_2=1e-2){

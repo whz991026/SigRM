@@ -5,13 +5,17 @@ output:
     toc: true
     toc_depth: 3
 abstract: |
-  The SigRM package introduces an innovative statistical approach, employing a similarity-guided multi-resolution analysis for precise m6A modification site detection within DART-seq data. This specialized toolkit, consisting of three pivotal functions, empowers researchers to explore single-cell RNA methylation sites comprehensively. SigRMtest delves deep into m6A modifications at the individual cell level. SigRM_similarity_test facilitates control group selection based on test cell similarity, with customizable control cell numbers. Lastly, SigRM_cluster_test is essential for clustering cells based on gene expression or read counts, seamlessly accommodating both test and control groups. This method relies on control cells with similar gene expression patterns for comparison, systematically evaluating test cell behavior. The SigRM package enhances the accuracy of methylation site results derived from DART-seq data, offering researchers tools. For inquiries, contact Haozhe.Wang17@student.xjtlu.edu.cn. The accompanying document provides an introduction to using the SigRM package, including a quick start guide, performance comparisons with the original method, and evaluation of clustering or selecting similar expression cells as control cells. It also outlines using the KS test when site labels are unavailable.\n <center> **Table of content** </center>
+      This Vignette to show the example to use the main function of the package, and demostrate the simulation part.\n <center> **Table of content** </center>
 vignette: >
   % \VignetteIndexEntry{SigRM_vignette}
   % \VignetteEngine{knitr::rmarkdown}
   % \VignetteEncoding{UTF-8}
   % \VignetteDepends{pROC} 
   % \VignetteDepends{Seurat} 
+  % \VignetteDepends{DESeq2} 
+  % \VignetteDepends{edgeR} 
+  % \VignetteDepends{latex2exp} 
+  % \VignetteDepends{statmod}
 ---
 
 ```{r, include = FALSE}
@@ -47,6 +51,10 @@ Load the other packages:
 
 * library(pROC)
 * library(Seurat)
+* library(ggplot2)
+* library(DESeq2)
+* library(edgeR)
+* library(latex2exp)
 ```{r, include=FALSE}
 
 
@@ -65,6 +73,24 @@ library(Seurat)
 #    install.packages("ggplot2")
 
 library(ggplot2)
+
+
+#    if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# 
+# BiocManager::install("DESeq2")
+library(DESeq2)
+
+
+#    if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# 
+# BiocManager::install("edgeR")
+library(edgeR)
+
+
+library(latex2exp)
+library(statmod)
 ```
 
 # Quick start
@@ -82,10 +108,10 @@ The output of the SigRMtest function is a list with a length of 7:
 * The seventh part is a data frame of adjusted p-values for the test cells. 
 
 
-```{r}
+```{r,warning=FALSE}
 set.seed(1)
 # first simulate the data
-data <- simulateData(test_num = 10,control_num = 30)
+data <- simulateData(n_Sites=2000,test_num = 10,control_num = 10)
 # put into the main function SigRMtest
 res <- SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]])
 
@@ -118,11 +144,11 @@ This section involves simulating data and evaluating the performance of the SigR
 
 For the simulation data:
 
-* There are 1000 sites.
-* The dataset comprises 300 control cells and 10 test cells.
+* There are 5000 sites.
+* The dataset comprises 100 control cells and 100 test cells.
 * The logarithm of $q_{ij}$ follows a uniform distribution.
 * The detection level $p_{ij}$ also follows a uniform distribution.
-* For 50% of the background sites, the detection levels follow a beta distribution and the mean level is (0, 0.4), while the corresponding test data follow a $U(0.6, 1)$ distribution.
+* For 50% of the background sites, the detection levels follow a beta distribution and the mean level is (0, 0.4), while the corresponding test data follow a $U(0.6, 0.9)$ distribution.
 * For the remaining sites, their detection levels are similar, following a a beta distribution and the mean level is (0, 0.4). 
 
 By the way, the simulateData() function is responsible for generating the dataset, as before, and provides an output list containing methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group.
@@ -148,7 +174,7 @@ Conversely, the single_test_SMART() function, designed for SMART-seq2 sample pre
 
 
 
-```{r,include=FALSE}
+```{r,warning=FALSE}
 
 
 
@@ -177,24 +203,21 @@ single_test_10x <- function(meth_control,meth_test,unmeth_control,unmeth_test){
       index_3 <- which(p_test>=1.5*p_control)
       index <- index_3 [index_3 %in% index_2]
   }else{
-    
-    
-    list_create <- as.list(1 : dim(meth_test)[2])
-    
-    list_function <- function (x) {
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
       # first condition
-      index_1 <- which(data2[,x]>=3)
+      index_1 <- which(data2[,i]>=3)
       
       # second condition
-      p_test <- meth_test[,x]/data2[,x]
+      p_test <- meth_test[,i]/data2[,i]
       index_2 <- which(p_test>=0.1)
       index_2 <- index_2[index_2 %in% index_1]
       
       #third condition
       index_3 <- which(p_test>=1.5*p_control)
-      index <- index_3[index_3 %in% index_2]
+      index[[i]] <- index_3[index_3 %in% index_2]
     }
-    index <- lapply(list_create,list_function)
     
   }
     
@@ -235,15 +258,14 @@ single_test_SMART <- function(meth_control,meth_test,unmeth_control,unmeth_test)
       index_4 <- which(meth_test>=2)
       index <- index_4 [index_4 %in% index_3]
   }else{
-    
-    list_create <- as.list(1 : dim(meth_test)[2])
-    
-    list_function <- function (x) {
-       # first condition
-      index_1 <- which(data2[,x]>=20)
+    index <- list()
+    for (i in 1 : dim(meth_test)[2]){
+      
+      # first condition
+      index_1 <- which(data2[,i]>=20)
       
       # second condition
-      p_test <- meth_test[,x]/data2[,x]
+      p_test <- meth_test[,i]/data2[,i]
       index_2 <- which(p_test>=0.1&p_test<=0.95)
       index_2 <- index_2[index_2 %in% index_1]
       
@@ -253,11 +275,9 @@ single_test_SMART <- function(meth_control,meth_test,unmeth_control,unmeth_test)
       index_3 <- index_3 [index_3 %in% index_2]
       
       #fourth condition
-      index_4 <- which(meth_test[,x]>=2)
-      index <- index_4 [index_4 %in% index_3]
+      index_4 <- which(meth_test[,i]>=2)
+      index[[i]] <- index_4 [index_4 %in% index_3]
     }
-    index <- lapply(list_create,list_function)
-   
     
     
     
@@ -272,15 +292,120 @@ single_test_SMART <- function(meth_control,meth_test,unmeth_control,unmeth_test)
 
 
 
+```
+
+### DESeq2 function
+DESeq2_test() function is the function apply DESeq2 package to detect the methylated sites.
+```{r,warning=FALSE}
+DESeq2_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  meth_control <- data.frame(meth_control)
+  meth_test <- data.frame(meth_test)
+  unmeth_control <- data.frame(unmeth_control)
+  unmeth_test <- data.frame(unmeth_test)
+
+   if (dim(meth_control)[2]<=20){
+    num <- dim(meth_control)[2]
+  } else {num <- 20}
+  
+  res <- list()
+  for (i in 1:dim(meth_test)[2]){
+    counts <- cbind(meth_control[,1:num],meth_test[,i],unmeth_control[,1:num],unmeth_test[,i])
+    design = data.frame(
+                    Trt = rep(c(rep("control", num),"test"),2), 
+                    Meth = c(rep("meth",(num+1)),rep("unmeth", 
+                            (num+1))))
+    model = ~  Meth + Trt + Meth*Trt
+    # 
+    dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = design,
+                                design = model)
+    sf = colSums(cbind((meth_control[,1:num]+unmeth_control[,1:num]),
+                       (meth_test[,i]+unmeth_test[,i])))
+    sf = sf/median(sf)
+    
+    sizeFactors(dds) = rep(sf,2)
+    
+
+    
+    dds <- DESeq(dds, test = "Wald")
+    res[[i]] = DESeq2::results(dds, name = "Methunmeth.Trttest")
+  }
+  
+  
+  
+  
+ 
+  
+  return(res)
+}
 
 ```
 
+### edgeR
+```{r,warning=FALSE}
 
+
+edgeR_test <- function(meth_control,meth_test,unmeth_control,unmeth_test){
+  
+   if (dim(meth_control)[2]<=20){
+    num <- dim(meth_control)[2]
+  } else {num <- 20}
+  
+  res <- list()
+  
+  for (i in 1: dim(meth_test)[2]){
+       # create deglist
+    countdata <- cbind(meth_control[,1:num],meth_test[,i],unmeth_control[,1:num],unmeth_test[,i])
+   
+    dgelist <- DGEList(counts = countdata)
+    
+    
+    countdata_all <- cbind((meth_control[,1:num]+unmeth_control[,1:num]),(meth_test[,i]+unmeth_test[,i]))
+   
+    dgelist_all <- DGEList(counts = countdata_all)
+    
+    
+    # normalize
+    dgelist_norm_all <- calcNormFactors(dgelist_all, method = 'TMM')
+    
+    dgelist_norm <- calcNormFactors(dgelist, method = 'TMM')
+    
+    dgelist_norm@.Data[[2]] <- rbind(dgelist_norm_all@.Data[[2]],dgelist_norm_all@.Data[[2]])
+    
+    rownames(dgelist_norm@.Data[[2]]) <- paste0("Sample",1:(2*(num+1)))
+    
+    
+    group1 <- factor(rep(c(rep("control",num),"test"),2))
+    group2 <- factor(c(rep("meth",(num+1)),rep("unmeth",(num+1))))
+    
+    
+    
+    design <- model.matrix(~0+group1+group2+group1:group2)
+    colnames(design) <- c("control", "test", "unmeth", "unmeth_and_test")
+    
+    dge <- estimateDisp(dgelist_norm, design, robust = TRUE)
+    
+    fit <- glmFit(dge, design, robust = TRUE)
+    
+    #contrast <- makeContrasts(test - control, levels = design)
+    #lrt <- glmLRT(fit,contrast=contrast)@.Data
+    lrt <- glmLRT(fit,coef=4)@.Data
+    
+    res[[i]] <- lrt[[14]]
+  }
+  
+  return(res)
+ 
+}
+
+
+
+```
 
 ### FDR function
 
 FDR_function(): This function calculates the FDR (false discovery rate).
-```{r,include=FALSE}
+```{r,include=FALSE,warning=FALSE}
 FDR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
   if(adjust==TRUE){
      res <- p.adjust(res,method = "BH",n=length(res))
@@ -296,7 +421,7 @@ FDR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
 ### TPR function
 
 TPR_function(): This function calculates the TPR (true positive rate).
-```{r,include=FALSE}
+```{r,include=FALSE,warning=FALSE}
 TPR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
   if(adjust==TRUE){
      res <- p.adjust(res,method = "BH",n=length(res))
@@ -312,6 +437,8 @@ TPR_function <- function(per_me,n_Sites,res,adjust=TRUE,threshold){
 
 
 
+
+
 ### test_function()
 In the following, test_function() is the function used to simulate data and obtain results from the SigRM, 10x, and SMART models. Since the 10x and SMART methods can only determine whether sites are m6A or not, whereas the SigRM provides p-values, we establish a threshold to ensure that the number of m6A sites detected by SigRM matches that of 10x or SMART for a fair comparison. We then evaluate and compare the performance based on AUC, FDR, and TPR. The output of test_function() is a list with seven components:
 
@@ -322,18 +449,16 @@ In the following, test_function() is the function used to simulate data and obta
 * Results obtained from SigRM.
 * Results from the 10x method.
 * Results from the SMART method."
+* Results from the DESeq2 method."
 
 
 
-
-```{r,include=FALSE}
+```{r,include=FALSE,warning=FALSE}
 test_function <- function(n_Sites = 1000, test_num = 200, control_num = 300, 
-     min_expression = 0, max_expression = 2, expression_p = 10,per_me =  per_me,
-     prange1=c(0,0.4),prange2=c(0.6,1),prange3=c(0,0.4),shape2=10,
+     min_expression = 0, max_expression = 3, expression_p = 10,per_me =  per_me,
+     prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=10,
       remove.false = TRUE){
-#n_Sites = 2000;test_num = 100; control_num = 300; min_expression = 0; max_expression = 3;
-#   per_me = 0.5;prange1=c(0,0.2);p_s_1=0.01;prange2=c(0.25,0.4);prange3=c(0,0.3);p_s_3=0.01;
-#  remove.false = TRUE
+
 options (warn = - 1)
 # simulate data
 data <- simulateData(n_Sites = n_Sites,test_num = test_num,control_num = control_num,
@@ -346,7 +471,8 @@ data <- simulateData(n_Sites = n_Sites,test_num = test_num,control_num = control
 res1 = SigRMtest(data[[1]],data[[2]],data[[3]],data[[4]],method_dispersion = "locfit")
 res2 = single_test_10x(data[[1]],data[[2]],data[[3]],data[[4]])
 res3 = single_test_SMART(data[[1]],data[[2]],data[[3]],data[[4]])
-
+res4 = DESeq2_test(data[[1]],data[[2]],data[[3]],data[[4]])
+res5 = edgeR_test(data[[1]],data[[2]],data[[3]],data[[4]])
 
 # set parameter
 
@@ -427,15 +553,96 @@ auc_SigRM_SMART <- unlist(lapply(test_results_SigRM,function(df)df[,4]))
 fdr_SigRM_SMART <- unlist(lapply(test_results_SigRM,function(df)df[,5]))
 TPR_SigRM_SMART <- unlist(lapply(test_results_SigRM,function(df)df[,6]))
 
+
+
+
+
+# DESeq2
+list_create <- as.list( 1 : length(res2) )
+list_function <- function (x) {
+  l1 <- length(res2[[x]])
+  l2 <- length(res3[[x]])
+  
+  threshold1 <- res4[[x]][,5][order(res4[[x]][,5])][l1]
+  threshold2 <- res4[[x]][,5][order(res4[[x]][,5])][l2]
+  
+
+  p2 <-rep(1,length(res4[[x]][,5])) 
+  p2[which(res4[[x]][,5]<=threshold1) ] <-0 
+  auc_DESeq2_10x<- auc(roc(label,p2))
+  fdr_DESeq2_10x<-FDR_function(per_me,n_Sites,p2,threshold=threshold1)
+  TPR_DESeq2_10x<-TPR_function(per_me,n_Sites,p2,threshold=threshold1)
+  
+  p2 <-rep(1,length(res4[[x]][,5])) 
+  p2[which(res4[[x]][,5]<=threshold2) ] <-0 
+  auc_DESeq2_SMART<- auc(roc(label,p2))
+  fdr_DESeq2_SMART<-FDR_function(per_me,n_Sites,p2,threshold=threshold2)
+  TPR_DESeq2_SMART<-TPR_function(per_me,n_Sites,p2,threshold=threshold2)
+  
+  return(cbind(auc_DESeq2_10x,fdr_DESeq2_10x,TPR_DESeq2_10x,
+               auc_DESeq2_SMART,fdr_DESeq2_SMART,TPR_DESeq2_SMART))
+}
+test_results_DESeq2  <- lapply(list_create,list_function)
+auc_DESeq2_10x <- unlist(lapply(test_results_DESeq2,function(df)df[,1]))
+fdr_DESeq2_10x <- unlist(lapply(test_results_DESeq2,function(df)df[,2]))
+TPR_DESeq2_10x <- unlist(lapply(test_results_DESeq2,function(df)df[,3]))
+auc_DESeq2_SMART <- unlist(lapply(test_results_DESeq2,function(df)df[,4]))
+fdr_DESeq2_SMART <- unlist(lapply(test_results_DESeq2,function(df)df[,5]))
+TPR_DESeq2_SMART <- unlist(lapply(test_results_DESeq2,function(df)df[,6]))
+
+
+# edgeR
+list_create <- as.list( 1 : length(res2) )
+list_function <- function (x) {
+  l1 <- length(res2[[x]])
+  l2 <- length(res3[[x]])
+  
+  threshold1 <- res5[[x]][,4][order(res5[[x]][,4])][l1]
+  threshold2 <- res5[[x]][,4][order(res5[[x]][,4])][l2]
+  
+
+  p2 <-rep(1,length(res5[[x]][,4])) 
+  p2[which(res5[[x]][,4]<=threshold1) ] <-0 
+  auc_edgeR_10x<- auc(roc(label,p2))
+  fdr_edgeR_10x<-FDR_function(per_me,n_Sites,p2,threshold=threshold1)
+  TPR_edgeR_10x<-TPR_function(per_me,n_Sites,p2,threshold=threshold1)
+  
+  p2 <-rep(1,length(res5[[x]][,4])) 
+  p2[which(res5[[x]][,4]<=threshold2) ] <-0 
+  auc_edgeR_SMART<- auc(roc(label,p2))
+  fdr_edgeR_SMART<-FDR_function(per_me,n_Sites,p2,threshold=threshold2)
+  TPR_edgeR_SMART<-TPR_function(per_me,n_Sites,p2,threshold=threshold2)
+  
+  return(cbind(auc_edgeR_10x,fdr_edgeR_10x,TPR_edgeR_10x,
+               auc_edgeR_SMART,fdr_edgeR_SMART,TPR_edgeR_SMART))
+}
+test_results_edgeR  <- lapply(list_create,list_function)
+auc_edgeR_10x <- unlist(lapply(test_results_edgeR,function(df)df[,1]))
+fdr_edgeR_10x <- unlist(lapply(test_results_edgeR,function(df)df[,2]))
+TPR_edgeR_10x <- unlist(lapply(test_results_edgeR,function(df)df[,3]))
+auc_edgeR_SMART <- unlist(lapply(test_results_edgeR,function(df)df[,4]))
+fdr_edgeR_SMART <- unlist(lapply(test_results_edgeR,function(df)df[,5]))
+TPR_edgeR_SMART <- unlist(lapply(test_results_edgeR,function(df)df[,6]))
+
+
 # set table
-auc_table <- cbind(c(auc_SigRM_10x,auc_SigRM_SMART,auc_single_10x,auc_single_SMART),
-                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+auc_table <- cbind(c(auc_SigRM_10x,auc_SigRM_SMART,auc_single_10x,auc_single_SMART,
+                     auc_DESeq2_10x,auc_DESeq2_SMART,auc_edgeR_10x,auc_edgeR_SMART),
+                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)),
+                     rep("DESeq2_10x",length(res2)),rep("DESeq2_SMART",length(res2)),
+                     rep("edgeR_10x",length(res2)),rep("edgeR_SMART",length(res2))))
 
-fdr_table <- cbind(c(fdr_SigRM_10x,fdr_SigRM_SMART,fdr_single_10x,fdr_single_SMART),
-                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+fdr_table <- cbind(c(fdr_SigRM_10x,fdr_SigRM_SMART,fdr_single_10x,fdr_single_SMART,
+                     fdr_DESeq2_10x,fdr_DESeq2_SMART,fdr_edgeR_10x,fdr_edgeR_SMART),
+                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)),
+                     rep("DESeq2_10x",length(res2)),rep("DESeq2_SMART",length(res2)),
+                     rep("edgeR_10x",length(res2)),rep("edgeR_SMART",length(res2))))
 
-TPR_table <- cbind(c(TPR_SigRM_10x,TPR_SigRM_SMART,TPR_single_10x,TPR_single_SMART),
-                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2))))
+TPR_table <- cbind(c(TPR_SigRM_10x,TPR_SigRM_SMART,TPR_single_10x,TPR_single_SMART,
+                     TPR_DESeq2_10x,TPR_DESeq2_SMART,TPR_edgeR_10x,TPR_edgeR_SMART),
+                   c(rep("SigRM_10x",length(res2)),rep("SigRM_SMART",length(res2)), rep("single_10x",length(res2)), rep("single_SMART",length(res2)),
+                     rep("DESeq2_10x",length(res2)),rep("DESeq2_SMART",length(res2)),
+                     rep("edgeR_10x",length(res2)),rep("edgeR_SMART",length(res2))))
 
 # return list
 list_return <- list()
@@ -446,6 +653,8 @@ list_return <- list()
   list_return[[5]]=res1
   list_return[[6]]=res2
   list_return[[7]]=res3
+  list_return[[8]]=res4
+  list_return[[9]]=res5
 
 return(list_return)
 
@@ -456,38 +665,195 @@ return(list_return)
 
 
 
+
+
+
 ## Compare origion methods
 
 This section involves comparing the performance of the SigRM model with the original method by invoking the test_function().
-```{r,include=FALSE}
+
+To reduce the running time, I change to 100 sites and 10 test and control cells. If you change to 5000 sites, and 100 test and control cells. You well get the exact plot in the paper.
+```{r,include=FALSE,warning=FALSE}
+
+
 set.seed(1)
 
-n_Sites <- 5000
+n_Sites <- 100
 per_me  <-0.5
 test_num = 10
-control_num = 300
+control_num = 10
+shape2= 1
+expression_p = 10
+min_expression = 0
+max_expression = 3
 
-metric <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
-      control_num , min_expression = 0, max_expression = 3, expression_p=10,
-      per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,1),
-      prange3=c(0,0.4),shape2=10, remove.false = TRUE)
+metric_1 <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = min_expression, max_expression =max_expression,per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=shape2,expression_p =expression_p,remove.false = TRUE)
 
-AUC_metric <- metric[[1]]
-colnames(AUC_metric) <- c("AUC","method")
-AUC_metric <- as.data.frame(AUC_metric)
-AUC_metric $AUC <-as.numeric(AUC_metric $AUC)
+AUC_metric_1 <- metric_1[[1]]
+colnames(AUC_metric_1) <- c("AUC","Method")
+AUC_metric_1 <- as.data.frame(AUC_metric_1)
+AUC_metric_1 $AUC <-as.numeric(AUC_metric_1 $AUC)
+AUC_metric_1 $shape2 <-rep(shape2,dim(AUC_metric_1 )[1])
 
-FDR_metric <- metric[[2]]
-colnames(FDR_metric) <- c("FDR","method")
-FDR_metric <- as.data.frame(FDR_metric)
-FDR_metric $FDR <-as.numeric(FDR_metric $FDR)
+FDR_metric_1 <- metric_1[[2]]
+colnames(FDR_metric_1) <- c("FDR","Method")
+FDR_metric_1 <- as.data.frame(FDR_metric_1)
+FDR_metric_1 $FDR <-as.numeric(FDR_metric_1 $FDR)
+FDR_metric_1 $shape2 <-rep(shape2,dim(FDR_metric_1 )[1])
 
-TPR_metric <- metric[[3]]
-colnames(TPR_metric) <- c("TPR","method")
-TPR_metric <- as.data.frame(TPR_metric)
-TPR_metric $TPR <-as.numeric(TPR_metric$TPR)
+TPR_metric_1 <- metric_1[[3]]
+colnames(TPR_metric_1) <- c("TPR","Method")
+TPR_metric_1 <- as.data.frame(TPR_metric_1)
+TPR_metric_1 $TPR <-as.numeric(TPR_metric_1$TPR)
+TPR_metric_1 $shape2 <-rep(shape2,dim(TPR_metric_1 )[1])
+
+set.seed(1)
+
+shape2= 2
+
+metric_2 <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = min_expression, max_expression =max_expression,per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=shape2,expression_p =expression_p,remove.false = TRUE)
+
+AUC_metric_2 <- metric_2[[1]]
+colnames(AUC_metric_2) <- c("AUC","Method")
+AUC_metric_2 <- as.data.frame(AUC_metric_2)
+AUC_metric_2 $AUC <-as.numeric(AUC_metric_2 $AUC)
+AUC_metric_2 $shape2 <-rep(shape2,dim(AUC_metric_2 )[1])
+
+FDR_metric_2 <- metric_2[[2]]
+colnames(FDR_metric_2) <- c("FDR","Method")
+FDR_metric_2 <- as.data.frame(FDR_metric_2)
+FDR_metric_2 $FDR <-as.numeric(FDR_metric_2 $FDR)
+FDR_metric_2 $shape2 <-rep(shape2,dim(FDR_metric_2 )[1])
+
+TPR_metric_2 <- metric_2[[3]]
+colnames(TPR_metric_2) <- c("TPR","Method")
+TPR_metric_2 <- as.data.frame(TPR_metric_2)
+TPR_metric_2 $TPR <-as.numeric(TPR_metric_2$TPR)
+TPR_metric_2 $shape2 <-rep(shape2,dim(TPR_metric_2 )[1])
+
+set.seed(1)
+
+shape2= 3
+
+metric_3 <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = min_expression, max_expression =max_expression,per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=shape2,expression_p =expression_p,remove.false = TRUE)
+
+AUC_metric_3 <- metric_3[[1]]
+colnames(AUC_metric_3) <- c("AUC","Method")
+AUC_metric_3 <- as.data.frame(AUC_metric_3)
+AUC_metric_3 $AUC <-as.numeric(AUC_metric_3 $AUC)
+AUC_metric_3 $shape2 <-rep(shape2,dim(AUC_metric_3 )[1])
+
+FDR_metric_3 <- metric_3[[2]]
+colnames(FDR_metric_3) <- c("FDR","Method")
+FDR_metric_3 <- as.data.frame(FDR_metric_3)
+FDR_metric_3 $FDR <-as.numeric(FDR_metric_3 $FDR)
+FDR_metric_3 $shape2 <-rep(shape2,dim(FDR_metric_3 )[1])
+
+TPR_metric_3 <- metric_3[[3]]
+colnames(TPR_metric_3) <- c("TPR","Method")
+TPR_metric_3 <- as.data.frame(TPR_metric_3)
+TPR_metric_3 $TPR <-as.numeric(TPR_metric_3$TPR)
+TPR_metric_3 $shape2 <-rep(shape2,dim(TPR_metric_3 )[1])
+
+set.seed(1)
+
+shape2= 4
+
+metric_4 <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = min_expression, max_expression =max_expression,per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=shape2,expression_p =expression_p,remove.false = TRUE)
+
+AUC_metric_4 <- metric_4[[1]]
+colnames(AUC_metric_4) <- c("AUC","Method")
+AUC_metric_4 <- as.data.frame(AUC_metric_4)
+AUC_metric_4 $AUC <-as.numeric(AUC_metric_4 $AUC)
+AUC_metric_4 $shape2 <-rep(shape2,dim(AUC_metric_4 )[1])
+
+FDR_metric_4 <- metric_4[[2]]
+colnames(FDR_metric_4) <- c("FDR","Method")
+FDR_metric_4 <- as.data.frame(FDR_metric_4)
+FDR_metric_4 $FDR <-as.numeric(FDR_metric_4 $FDR)
+FDR_metric_4 $shape2 <-rep(shape2,dim(FDR_metric_4 )[1])
+
+TPR_metric_4 <- metric_4[[3]]
+colnames(TPR_metric_4) <- c("TPR","Method")
+TPR_metric_4 <- as.data.frame(TPR_metric_4)
+TPR_metric_4 $TPR <-as.numeric(TPR_metric_4$TPR)
+TPR_metric_4 $shape2 <-rep(shape2,dim(TPR_metric_4 )[1])
 
 
+set.seed(1)
+
+shape2= 5
+
+metric_5 <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = min_expression, max_expression =max_expression,per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=shape2,expression_p =expression_p,remove.false = TRUE)
+
+AUC_metric_5 <- metric_5[[1]]
+colnames(AUC_metric_5) <- c("AUC","Method")
+AUC_metric_5 <- as.data.frame(AUC_metric_5)
+AUC_metric_5 $AUC <-as.numeric(AUC_metric_5 $AUC)
+AUC_metric_5 $shape2 <-rep(shape2,dim(AUC_metric_5 )[1])
+
+FDR_metric_5 <- metric_5[[2]]
+colnames(FDR_metric_5) <- c("FDR","Method")
+FDR_metric_5 <- as.data.frame(FDR_metric_5)
+FDR_metric_5 $FDR <-as.numeric(FDR_metric_5 $FDR)
+FDR_metric_5 $shape2 <-rep(shape2,dim(FDR_metric_5 )[1])
+
+TPR_metric_5 <- metric_5[[3]]
+colnames(TPR_metric_5) <- c("TPR","Method")
+TPR_metric_5 <- as.data.frame(TPR_metric_5)
+TPR_metric_5 $TPR <-as.numeric(TPR_metric_5$TPR)
+TPR_metric_5 $shape2 <-rep(shape2,dim(TPR_metric_5 )[1])
+
+
+
+
+
+
+
+set.seed(1)
+
+
+shape2= 6
+
+metric_6 <- test_function(n_Sites = n_Sites, test_num = test_num, control_num =
+      control_num , min_expression = min_expression, max_expression =max_expression,per_me =  per_me ,prange1=c(0,0.4),prange2=c(0.6,0.9),prange3=c(0,0.4),shape2=shape2,expression_p =expression_p,remove.false = TRUE)
+
+AUC_metric_6 <- metric_6[[1]]
+colnames(AUC_metric_6) <- c("AUC","Method")
+AUC_metric_6 <- as.data.frame(AUC_metric_6)
+AUC_metric_6 $AUC <-as.numeric(AUC_metric_6 $AUC)
+AUC_metric_6 $shape2 <-rep(shape2,dim(AUC_metric_6 )[1])
+
+FDR_metric_6 <- metric_6[[2]]
+colnames(FDR_metric_6) <- c("FDR","Method")
+FDR_metric_6 <- as.data.frame(FDR_metric_6)
+FDR_metric_6 $FDR <-as.numeric(FDR_metric_6 $FDR)
+FDR_metric_6 $shape2 <-rep(shape2,dim(FDR_metric_6 )[1])
+
+TPR_metric_6 <- metric_6[[3]]
+colnames(TPR_metric_6) <- c("TPR","Method")
+TPR_metric_6 <- as.data.frame(TPR_metric_6)
+TPR_metric_6 $TPR <-as.numeric(TPR_metric_6$TPR)
+TPR_metric_6 $shape2 <-rep(shape2,dim(TPR_metric_6 )[1])
+
+
+AUC_metric <- rbind(AUC_metric_1,AUC_metric_2,AUC_metric_3,AUC_metric_4,AUC_metric_5,AUC_metric_6)
+
+AUC_metric$shape2 <- as.factor(AUC_metric$shape2)
+
+
+FDR_metric <- rbind(FDR_metric_1,FDR_metric_2,FDR_metric_3,FDR_metric_4,FDR_metric_5,FDR_metric_6)
+
+FDR_metric$shape2 <- as.factor(FDR_metric$shape2)
+
+TPR_metric <- rbind(TPR_metric_1,TPR_metric_2,TPR_metric_3,TPR_metric_4,TPR_metric_5,TPR_metric_6)
+
+TPR_metric$shape2 <- as.factor(TPR_metric$shape2)
 ```
 
 
@@ -496,50 +862,49 @@ Visualizing the results of the comparison of performance: AUC, FDR, and TPR.
 
 The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SigRM output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SigRM and these methods.
 
-* In the AUC plot, it is evident that the AUC of SigRM_10x surpasses that of 10x, and the AUC of SigRM_SMART outperforms SMART.
-* Regarding the FDR plot, it's clear that the FDR of SigRM_10x is lower than that of 10x, and the FDR of SigRM_SMART is lower than SMART.
-* In the TPR plot, we observe that the TPR of SigRM_10x is superior to that of 10x, and the TPR of SigRM_SMART excels compared to SMART.
-* For the ratio plots, comparing the risk ratio and odds ratio plots on the simulation data with the SigRM results, it's noticeable that the plots are quite similar when the p-value threshold is set to 0.05. Furthermore, SigRM does not detect any sites with a log odds ratio or log risk ratio below 0.
+Show the FDR:
+```{r,warning=FALSE}
+
+FDR_metric <- rbind(FDR_metric_1,FDR_metric_2,FDR_metric_3,FDR_metric_4,FDR_metric_5,FDR_metric_6)
+
+FDR_metric$shape2 <- as.factor(FDR_metric$shape2)
 
 
-```{r,results='hold',echo=FALSE}
 
-give.median1 <- function(x){
-  return(c(y = median(x)*1.05, label = round(median(x),3))) 
-  # experiment with the multiplier to find the perfect position
-} 
+index_10x <- which(grepl("10x",FDR_metric[,2]))
+index_DESeq2 <- which(grepl("DESeq2",FDR_metric[,2]))
+index_edgeR <- which(grepl("edgeR",FDR_metric[,2]))
+index_SigRM <- which(grepl("SigRM",FDR_metric[,2]))
+index_single <- which(grepl("single",FDR_metric[,2]))
 
-give.median2 <- function(x){
-  return(c(y = median(x)*1.005, label = round(median(x),3))) 
-  # experiment with the multiplier to find the perfect position
-} 
+FDR_metric[index_single,2] <- "Bullseye"
+FDR_metric[index_edgeR,2] <- "edgeR"
+FDR_metric[index_DESeq2,2] <- "DESeq2"
+FDR_metric[index_SigRM,2] <- "SigRM"
 
-ggplot(AUC_metric, aes( y=(AUC),fill=method,x=method)) + 
-  geom_boxplot() + ggtitle("Plot of AUC") +
-  theme(plot.title = element_text(hjust = 0.5))+
-  guides(x = guide_axis(angle = 90))+
-  stat_summary(fun.data = give.median2, geom = "text", fun = median)
-
-
-ggplot(FDR_metric, aes( y=(FDR),fill=method,x=method)) + 
-  geom_boxplot() + ggtitle("Plot of FDR")+
-  theme(plot.title = element_text(hjust = 0.5)) +
-  guides(x = guide_axis(angle = 90))+
-  stat_summary(fun.data = give.median1, geom = "text", fun = median)
+FDR_metric$platform <- 0
+FDR_metric$platform <- 0
+FDR_metric[index_10x,4] <- "10x Genomics"
+FDR_metric[-index_10x,4] <- "SMART-seq2"
 
 
-ggplot(TPR_metric, aes( y=(TPR),fill=method,x=method)) + 
-  geom_boxplot() + ggtitle("Plot of TPR")+
-  theme(plot.title = element_text(hjust = 0.5)) +
-  guides(x = guide_axis(angle = 90))+
-  stat_summary(fun.data = give.median2, geom = "text", fun = median)
+plot_sim_1 <- ggplot(FDR_metric, aes( y=FDR,color=shape2,x=Method)) +
+  geom_violin(width = 1, scale = "width", size = 0.2) +
+  geom_boxplot(width = 0.6, position = position_dodge(1),       
+               outlier.shape = NA, cex = 0.4)+facet_wrap(vars(platform), scales = "free")
 
 
 
 
+plot_sim_2 <- ggplot(FDR_metric, aes( y=FDR,color=Method,x=shape2)) +
+  geom_violin(width = 0.9, scale = "width", size = 0.2) +
+  geom_boxplot(width = 0.6, position = position_dodge(0.9),         
+               outlier.shape = NA, cex = 0.4)+facet_wrap(vars(platform), scales = "free")+labs("Method")+xlab(TeX("Variance Level ($\\beta$)"))
+
+plot_sim_1
+plot_sim_2
 ```
-
-## Cluster 
+# Cluster 
 We aim to apply a clustering method in which cells with similar gene expression are grouped together. For the test cells, this method not only employs all control cells but also selects control cells with similar gene expression as the control group. We utilize the Seurat clustering method.
 
 
@@ -555,9 +920,9 @@ The outputs of the SigRM_cluster_test function also consist of a list with a len
 It's important to note that the mean methylation proportion of the control group and the estimated abundance can vary with different clusters, which is why they are represented as data frames rather than vectors.
 
 ### cluster by Seurat
-```{r, include=FALSE}
+```{r, include=FALSE,warning=FALSE}
 set.seed(1)
-data <- simulateData(test_num = 10,control_num = 100)
+data <- simulateData(n_Sites=2000,test_num = 10,control_num = 100)
 
 # cluster the cells
 data1 <- data[[1]]+data[[3]]
@@ -609,7 +974,7 @@ cluster <- Idents(pbmc)
 
 
 ### call the SigRM_cluster_test() function
-```{r}
+```{r,warning=FALSE}
 res <- SigRM_cluster_test(data[[1]],data[[2]],data[[3]],data[[4]],cluster = cluster)
 
 # meth proportion data frame (row is gene and column is single cell) in the test cells. 
@@ -639,7 +1004,7 @@ head(res[[7]])
 
 
 
-## similarity
+# similarity
 The cluster method may result in clusters that do not contain any control cells, leaving the test cells without a control group. In such cases, we can employ control cells with the most similar gene expression.
 
 ### SigRM_similarity_test function
@@ -650,10 +1015,10 @@ Regarding the outputs, they are identical to those of the SigRM_cluster_test fun
 
 These revisions should make the text clearer and more grammatically sound.
 
-```{r}
+```{r,warning=FALSE}
 
 set.seed(1)
-data <- simulateData(test_num = 10,control_num = 30)
+data <- simulateData(n_Sites=2000,test_num = 10,control_num = 100)
 res = SigRM_similarity_test(data[[1]],data[[2]],data[[3]],data[[4]],
             method="Pearson",num_control=10)
 
