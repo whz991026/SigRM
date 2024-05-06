@@ -4038,7 +4038,7 @@ plot_markergene2
 ```
 
 ## Fisher exact test
-# regulate network
+
 ```{r,eval=FALSE}
 data <- readRDS("D:/data/SMART_3/preprocess2/data_plot_case_study1.rds")
 data <- data[,3:4]
@@ -4190,3 +4190,6 @@ fisher_odds_ratio <- fisher_odds_ratio [,c(3,2,4,1)]
 fisher_pvalue
 fisher_odds_ratio
 ```
+#  Regulatory inference from single-cell epitranscriptomics
+the code can be access from:
+https://drive.google.com/drive/folders/1D137_357nuVYkxYiwcxH8dNyKsEbYrUv?usp=sharing

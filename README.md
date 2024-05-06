@@ -16,6 +16,11 @@ You can install the development version of SigRM from [GitHub](https://github.co
 devtools::install_github("whz991026/SigRM")
 ```
 
+## data
+
+the data can be access from:
+https://drive.google.com/drive/folders/1D137_357nuVYkxYiwcxH8dNyKsEbYrUv?usp=sharing
+
 ## Example
 
 It demonstrates how to utilize the main function, SigRMtest(), from the SigRM package. The primary input for the SigRMtest function is a matrix or data frame containing four sets of read counts, where rows represent genes, and columns represent single cells. These four sets of read counts are ordered as follows: methylation read counts in the control group, methylation read counts in the test group, unmethylation read counts in the control group, and unmethylation read counts in the test group. This data can be obtained by calling the simulateData() function.
