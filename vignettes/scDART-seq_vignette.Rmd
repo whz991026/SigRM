@@ -32,7 +32,8 @@ https://drive.google.com/drive/folders/1D137_357nuVYkxYiwcxH8dNyKsEbYrUv?usp=sha
 SNP is the information of the 510,554 sites. frequency_all_processed contains the methylationreads counts and unmethylation reads counts for 510,554 sites and 1382 cells (YTH is the test cell, YTHmut is the control cells). expression_TPM is the TPM of the 1382 cells.
 
 # Extraction of m6A signals from scDART-seq data 
-The raw data was directly downloaded from GEO and aligned to hg38 reference genome using hisat2. The candidate m6A sites (corresponding to mutated C within the DRACH motifs) were detected using Samtools (default setting). The m6A and non-modification signals (number of mutated and unmutated sequences with respect to each candidate sites) were counted using GenomicAlignments R package. The Information of a total of 2371331 sites was extracted for 1382 cells, including 991 testing cells and 391 negative control which has mutated YTH domain. We excluded sites with an unexpected error rate exceeding 1% and a median read count below 10, resulting in 510,554 retained candidate m6A sites, which was utilized for the subsequent real data analysis and methodology tests.
+The raw data was directly downloaded from GEO and aligned to hg38 reference genome using hisat2. The candidate m6A sites (corresponding to mutated C within the DRACH motifs) were detected using Samtools (default setting). The m6A and non-modification signals (number of mutated and unmutated sequences with respect to each candidate sites) were counted using GenomicAlignments R package. The Information of a total of 2371331 sites was extracted for 1382 cells, including 991 testing cells and 391 negative control which has mutated YTH domain. 
+
 
 
 ```{r,eval=FALSE}
@@ -172,26 +173,28 @@ stringtie /home/share/bowen/scDART/data/YTHcell_1/bam/SRR15268889_sorted.bam -G 
 
 ```
 
+
+
+
+There are three files that can be obtained:
+
+* gene_expression: a list with Gene.ID, Gene.Name, Reference, Strand, Start, End, Coverage, FPKM, and TPM.
+* frequency_all: a list with the frequency of A, C, T, G, and others for 2,371,331 sites.
+* SNP_all: a Grange object with detailed information for the 2,371,331 sites.
+
+
 # Pre-process
-We get 3 objects, one is the frequency of A,C,T,g,and other, the others are the gene expression and SNP.
 
 
+We need to calculate the methylation read counts and unmethylated read counts base the frequency_all and SNP_all file
 
-
-
-There are two data:
-
-* frequency_all is the data contains the read counts of the A C G T and others for each sites and cell (row means sites, column means cell)
-* testSNP_all is the data contains the information of the SNP for each sites and cells
-
-Combine them to get the methylated reads count and unmethylated reads count. Strand_plus(T is methylated reads count, C is unmethylated reads count).Strand_minus(A is methylated reads count, G is unmethylated reads count). The rest are the error reads count.
 ```{r,eval=FALSE}
 
 
-frequency_all <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_2/origin/frequency_all.rds")
+frequency_all <- readRDS("frequency_all.rds")
 
 
-testSNP_all <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_2/origin/SNP_all_7374.rds")
+testSNP_all <- readRDS("SNP_all.rds")
 
 
 
@@ -214,7 +217,7 @@ strand_minus <- which(strand=="-")
 
 error_rate_list <- list()
 
-error_reads_list <- list()
+error_reads_list <-  methylated_rate_list <- list()
 
 site_length_nomatch <-  which(lapply(frequency_all, function(x) dim(x)[1])!=length(testSNP_all))
 
@@ -253,10 +256,14 @@ for (i in setdiff((1:num_cell),site_length_nomatch)){
     mutate(methylated_reads=methylated_reads)%>% 
     mutate(unmethylated_reads=unmethylated_reads)%>%
     mutate(error_reads=error_reads)%>% 
-     select(methylated_reads,unmethylated_reads,error_reads)
+    mutate(error_rate=error_reads/(methylated_reads+unmethylated_reads+error_reads))%>% 
+     select(methylated_reads,unmethylated_reads,error_reads,error_rate)
  
   error_reads_list[[i]] <-  frequency_all[[i]]$error_reads
-  
+  error_rate_list[[i]] <-  frequency_all[[i]]$error_rate
+  methylated_rate_list[[i]] <-  frequency_all[[i]]$methylated_reads/(frequency_all[[i]]$methylated_reads+
+                                                                       frequency_all[[i]]$unmethylated_reads+
+                                                                       frequency_all[[i]]$error_reads)
 #   frequency_all[[i]] <- frequency_all[[i]] %>% 
 #    mutate(methylated_reads=methylated_reads)%>% 
 #    mutate(unmethylated_reads=unmethylated_reads)%>%
@@ -272,8 +279,8 @@ if (length(site_length_nomatch)==0){
   
   frequency_all <- frequency_all[-site_length_nomatch]
   error_reads_list <- error_reads_list[-site_length_nomatch]
-  #error_rate_list <- error_rate_list[-site_length_nomatch]
-
+  error_rate_list <- error_rate_list[-site_length_nomatch]
+  methylated_rate_list <-  methylated_rate_list[-site_length_nomatch]
 
 }
 
@@ -281,7 +288,8 @@ if (length(site_length_nomatch)==0){
 setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_2/preprocess1")
 saveRDS(error_rate_list,"error_rate_list.rds")
 saveRDS(frequency_all,"reads_counts.rds")
-saveRDS(error_reads_list,"error_reads.rds")
+saveRDS(error_reads_list,"error_reads_list.rds")
+saveRDS(methylated_rate_list,"methylated_rate_list.rds")
 ```
 
 After that we will get a reads counts for methylated and unmethylated reads and the error rate. we discard the error rate>= 0.1 and median of frequency <=10. This will retain 510,554 sites.
@@ -290,10 +298,8 @@ After that we will get a reads counts for methylated and unmethylated reads and 
 
 
 #library(ggplot2)
-methylation_rate <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/methylation_rate.rds")
+methylation_rate <- readRDS("methylation_rate.rds")
 
-discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
-methylation_rate <- methylation_rate[-discard_cell]
 num_controlcell <- length(which(grepl("YTHmutcell",names(methylation_rate))))
 num_testcell <- length(which(grepl("YTHcell",names(methylation_rate))))
 
@@ -304,7 +310,7 @@ index_test <- sample(which(grepl("YTHmutcell",names(methylation_rate))),3)
 # see the density of the methylation_rate from control cell and test cell
 
 
-# see the histogram of the number of the sites methylation rate >=0.5
+# see the histogram of the number of the sites methylation rate >=0.3
 methylation_rate_high_num <- as.numeric(lapply(methylation_rate, function(x) length(which(x>=0.3))))
 
 data_methylation_rate_high_num <- data.frame(cbind(methylation_rate_high_num,c(rep("control",num_controlcell),rep("test",num_testcell))))
@@ -322,25 +328,12 @@ coord_cartesian(xlim = c(0,22000))
 
 
 
-error_reads_list_1 <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess1/error_reads_list_73_control.rds")
-
-error_reads_list_2 <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess1/error_reads_list_73_treatment.rds")
-
-
-error_reads_list_3 <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess1/error_reads_list_74_treatment.rds")
+error_reads_list<- readRDS("error_reads_list.rds")
 
 error_reads_list <- c(error_reads_list_1,error_reads_list_2,error_reads_list_3)
 rm(error_reads_list_1,error_reads_list_2,error_reads_list_3)
 
 
-
-
-
-
-
-
-discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
-error_reads_list <- error_reads_list[-discard_cell]
 
 error_reads_data <- as.data.frame(error_reads_list)
 error_reads_data_sum <- apply(error_reads_data,1,sum)
@@ -358,17 +351,18 @@ error_rate <- error_reads_data_sum/(error_reads_data_sum+frequency_all_sum)
 
 
 
-#length(union(which(error_rate>0.001),which(frequency_all_average<=1)))
-#length(which(frequency_all_average<=10))
+
 
 rm(list=ls()[! ls() %in% c("error_rate","frequency_all_median","methylation_rate")])
 gc()
+
+
 union_set <- union(union(which(error_rate>=0.01),which(is.na(error_rate))),which(frequency_all_median<=10))
 
 
 methylation_rate_processed <- lapply(methylation_rate, function(df) df[-union_set])
 
-# see the histogram of the number of the sites methylation rate >=0.5
+# see the histogram of the number of the sites methylation rate >=0.3
 methylation_rate_high_num_processed <- as.numeric(lapply(methylation_rate_processed, function(x) length(which(x>=0.3))))
 
 num_controlcell <- length(which(grepl("YTHmutcell",names(methylation_rate))))
@@ -389,27 +383,90 @@ geom_histogram(data=data_methylation_rate_high_num_processed[-(1:num_controlcell
 
 
 
-setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2")
+setwd("path")
 saveRDS(union_set,"discard_sites.rds")
 
-discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
-methylation_rate_processed <- methylation_rate_processed[-discard_cell]
 
-setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2")
+
+setwd("path")
 saveRDS(methylation_rate_processed,"methylation_rate_processed.rds")
 
 
 
 rm(list=ls()[! ls() %in% c("union_set")])
-frequency_all <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all.rds")
+frequency_all <- readRDS("frequency_all.rds")
 frequency_all_processed <- lapply(frequency_all, function(df) df[-union_set,])
 
-discard_cell <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/discard_cell.rds")
-frequency_all_processed <- frequency_all_processed[-discard_cell]
 
-setwd("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2")
-saveRDS(frequency_all_processed,"frequency_all_processed.rds")
+setwd("path")
+saveRDS(frequency_all_processed,"frequency_all_processed.rds") # this is the frequency of the 510554 sites (methylation read count, unmethylated rad counts)
+
+SNP_all <- readRDS("SNP_all.rds")
+SNP_all_processed <- lapply(SNP_all, function(df) df[-union_set,])
+
+setwd("path")
+saveRDS(SNP_all_processed,"SNP_all_processed.rds") # this is the SNP of the 510554 sites 
+
+
+gene_expression <- readRDS("gene_expression.rds")
+expression_TPM <- lapply(gene_expression, function(df) df$TPM)
+
+setwd("path")
+saveRDS(expression_TPM,"expression_TPM.rds") # this is the TPM of the 1382 cells
+
+gene_expression <- readRDS("gene_expression.rds")
+gene_informations <- lapply(gene_expression, function(df) df[1][,1:7])
+
+setwd("path")
+saveRDS(gene_informations,"gene_informations.rds") # this is the gene informations 
 ```
+
+
+Following data extraction, 510,554 candidate m6A sites were retained for further analysis.
+
+The files associated with this study include:
+
+*SNP File (SNP_all.rds):
+
+Data Details: Stored in RDS format, containing a GRanges object.
+Content: Each entry in the GRanges object represents a specific genomic region corresponding to an m6A modification site detected through scDART-seq.
+seqnames: Factor Rle object containing chromosome or genomic sequence names.
+ranges: IRanges object containing genomic intervals (start and end positions).
+strand: Factor Rle object indicating the strand (directionality) of the genomic region.
+mcols: DataFrame object containing optional metadata columns, such as quality scores, coverage depth, and mutation data.
+seqinfo: Seqinfo object providing information about the genomic sequences present in the GRanges object.
+Purpose: Provides detailed genomic information about identified m6A modification sites, facilitating further analysis of their distribution, characteristics, and genomic context in HEK293T cells.
+
+
+*Frequency File (frequency_all.rds):
+
+Data Details: Also stored in RDS format, consisting of a list.
+Content: Each item in the list represents a single-cell, containing counts of methylated and unmethylated reads for corresponding m6A modification sites detected in scDART-seq data.
+Purpose: Offers quantitative data on the abundance of methylated and unmethylated sequences at each m6A site across individual cells, enabling investigation of m6A modification patterns at a single-cell level.
+
+
+*Expression TPM File (expression_TPM.rds):
+
+Data Details: Stored as an RDS file, comprising a list.
+Content: Each item in the list represents a single-cell, with corresponding TPM values for gene expression.
+Purpose: Provides information on gene expression levels across individual cells, facilitating examination of potential correlations between m6A modification patterns and gene expression profiles in scDART-seq data from HEK293T cells.
+
+*Gene Information File (gene_informations.rds):
+
+Data Details: Stored as an RDS file, comprising a data frame.
+Content: Includes information such as Gene ID, Gene Name, Reference, Strand, Start position, End position, and Coverage.
+Purpose: Offers additional details about gene expression data, aiding in the interpretation and analysis of gene expression profiles in conjunction with m6A modification patterns.
+
+
+
+
+All three files can access on: https://figshare.com/articles/dataset/The_scDART-seq_data_used_in_the_b_Statistical_modeling_of_single-cell_epitranscriptomics_enabled_trajectory_and_regulatory_inference_of_RNA_methylation_b_/25815862
+
+with DOI: 10.6084/m9.figshare.25815862
+
+
+
+
 
 # compare the performance for different model
 
@@ -418,7 +475,9 @@ saveRDS(frequency_all_processed,"frequency_all_processed.rds")
 
 #### preprocess
 ```{r,eval=FALSE}
-frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+
+# this the the frequency of the 510554 sites
+frequency_all_processed <- readRDS("frequency_all_processed.rds")
 # get the meth reads and unmeth reads
 meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
 unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
@@ -446,7 +505,7 @@ test_index <- c( sample((num_controlcell+1):(num_controlcell+num_testcell),10), 
 num_cell_control <- 2
 control_index <- sample(control_index,num_cell_control)
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+path <-  paste0("path",num_cell_control)
 setwd(path )
 saveRDS(control_index,"control_index.rds")
 
@@ -757,7 +816,7 @@ save(runtime,file = "runtime.RData")
 rm(list=ls())
 num_cell_control <- 2
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+path <-  paste0("path",num_cell_control)
 
 setwd(path)
 
@@ -784,8 +843,7 @@ for (i in 1: length(res_DESeq2)){
   index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
 }
 
-setwd(path)
-saveRDS(index_nona,"index_nona.rds")
+
 
 
 res_SigRM_unbiased_ks <- c()
@@ -825,7 +883,7 @@ ks_list_function <- function (x,index_x,y,index_y){
 
 
 
-   index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
+  
   
  
    
@@ -874,7 +932,7 @@ saveRDS(kstest_data_origin,"kstest_data_origin.rds")
 ```{r,eval=FALSE}
 rm(list=ls())
 gc()
-frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+frequency_all_processed <- readRDS("frequency_all_processed.rds")
 # get the meth reads and unmeth reads
 meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
 unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
@@ -902,7 +960,7 @@ test_index <- c( sample((num_controlcell+1):(num_controlcell+num_testcell),10), 
 num_cell_control <- 4
 control_index <- sample(control_index,num_cell_control)
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+path <-  paste0("path",num_cell_control)
 setwd(path )
 saveRDS(control_index,"control_index.rds")
 
@@ -1213,7 +1271,7 @@ save(runtime,file = "runtime.RData")
 rm(list=ls())
 num_cell_control <- 4
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+path <-  paste0("path",num_cell_control)
 
 setwd(path)
 
@@ -1240,8 +1298,6 @@ for (i in 1: length(res_DESeq2)){
   index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
 }
 
-setwd(path)
-saveRDS(index_nona,"index_nona.rds")
 
 res_SigRM_unbiased_ks <- c()
 res_SigRM_locfit_ks <- c()
@@ -1277,12 +1333,6 @@ ks_list_function <- function (x,index_x,y,index_y){
 
 
 
-
-
-
-  
-  
-  index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
    
   res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit[[5]][1:10],index_nona[1:10],res_SigRM_locfit[[5]][11:20],index_nona[11:20])
   
@@ -1330,7 +1380,7 @@ saveRDS(kstest_data_origin,"kstest_data_origin.rds")
 ```{r,eval=FALSE}
 rm(list=ls())
 gc()
-frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+frequency_all_processed <- readRDS("frequency_all_processed.rds")
 # get the meth reads and unmeth reads
 meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
 unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
@@ -1358,7 +1408,7 @@ test_index <- c( sample((num_controlcell+1):(num_controlcell+num_testcell),10), 
 num_cell_control <- 8
 control_index <- sample(control_index,num_cell_control)
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+path <-  paste0("path",num_cell_control)
 setwd(path )
 saveRDS(control_index,"control_index.rds")
 
@@ -1669,7 +1719,7 @@ save(runtime,file = "runtime.RData")
 rm(list=ls())
 num_cell_control <- 8
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control)
+path <-  paste0("path",num_cell_control)
 
 setwd(path)
 
@@ -1696,8 +1746,6 @@ for (i in 1: length(res_DESeq2)){
   index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
 }
 
-setwd(path)
-saveRDS(index_nona,"index_nona.rds")
 
 res_SigRM_unbiased_ks <- c()
 res_SigRM_locfit_ks <- c()
@@ -1734,11 +1782,6 @@ ks_list_function <- function (x,index_x,y,index_y){
 
 
 
-
-
-  
-  
-  index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
    
   res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit[[5]][1:10],index_nona[1:10],res_SigRM_locfit[[5]][11:20],index_nona[11:20])
   
@@ -1780,7 +1823,7 @@ saveRDS(kstest_data_origin,"kstest_data_origin.rds")
 
 #### preprocess
 ```{r,eval=FALSE}
-frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+frequency_all_processed <- readRDS("frequency_all_processed.rds")
 # get the meth reads and unmeth reads
 meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
 unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
@@ -1804,7 +1847,7 @@ test_real <- sample((num_controlcell+1):(num_controlcell+num_testcell),10)
 test_index <- c(test_real, test_fake)
 
 
-expression_logTPM <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+expression_logTPM <- readRDS("expression_TPM.rds")
 expression_logTPM <- log2(expression_logTPM+1)
 index <- c(setdiff(1:num_controlcell,test_fake),(num_controlcell+1):(num_controlcell+num_testcell),test_fake)
 expression_logTPM <- expression_logTPM[,index]
@@ -1842,7 +1885,7 @@ control_index <- lapply(similarity_index,function(df) df[1:num_cell_control])
 
 
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+path <-  paste0("path",num_cell_control,"sim")
 setwd(path )
 saveRDS(control_index,"control_index.rds")
 
@@ -2205,7 +2248,7 @@ save(runtime,file = "runtime.RData")
 rm(list=ls())
 num_cell_control <- 2
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+path <-  paste0("path",num_cell_control,"sim")
 
 res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
 res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
@@ -2230,8 +2273,6 @@ for (i in 1: length(res_DESeq2)){
   index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
 }
 
-setwd(path)
-saveRDS(index_nona,"index_nona.rds")
 
 res_SigRM_unbiased_ks <- c()
 res_SigRM_locfit_ks <- c()
@@ -2267,9 +2308,6 @@ ks_list_function <- function (x,index_x,y,index_y){
 
 
 
-
-
-    index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
     
     res_SigRM_locfit_pvalue <- lapply(res_SigRM_locfit,function(df) df[,5])
     
@@ -2323,7 +2361,7 @@ saveRDS(kstest_data_origin,"kstest_data_origin.rds")
 ```{r,eval=FALSE}
 rm(list=ls())
 gc()
-frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+frequency_all_processed <- readRDS("frequency_all_processed.rds")
 # get the meth reads and unmeth reads
 meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
 unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
@@ -2347,7 +2385,7 @@ test_real <- sample((num_controlcell+1):(num_controlcell+num_testcell),10)
 test_index <- c(test_real, test_fake)
 
 
-expression_logTPM <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+expression_logTPM <- readRDS("expression_TPM.rds")
 expression_logTPM <- log2(expression_logTPM+1)
 index <- c(setdiff(1:num_controlcell,test_fake),(num_controlcell+1):(num_controlcell+num_testcell),test_fake)
 expression_logTPM <- expression_logTPM[,index]
@@ -2385,7 +2423,7 @@ control_index <- lapply(similarity_index,function(df) df[1:num_cell_control])
 
 
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+path <-  paste0("path",num_cell_control,"sim")
 setwd(path )
 saveRDS(control_index,"control_index.rds")
 
@@ -2748,7 +2786,7 @@ save(runtime,file = "runtime.RData")
 rm(list=ls())
 num_cell_control <- 4
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+path <-  paste0("path",num_cell_control,"sim")
 
 res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
 res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
@@ -2773,8 +2811,6 @@ for (i in 1: length(res_DESeq2)){
   index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
 }
 
-setwd(path)
-saveRDS(index_nona,"index_nona.rds")
 
 res_SigRM_unbiased_ks <- c()
 res_SigRM_locfit_ks <- c()
@@ -2812,8 +2848,6 @@ ks_list_function <- function (x,index_x,y,index_y){
 
 
 
-   index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
-  
     res_SigRM_locfit_pvalue <- lapply(res_SigRM_locfit,function(df) df[,5])
     
     res_SigRM_locfit_ks <- ks_list_function(res_SigRM_locfit_pvalue[1:10],index_nona[1:10],res_SigRM_locfit_pvalue[11:20],index_nona[11:20])
@@ -2867,7 +2901,7 @@ saveRDS(kstest_data_origin,"kstest_data_origin.rds")
 ```{r,eval=FALSE}
 rm(list=ls())
 gc()
-frequency_all_processed <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/frequency_all_processed.rds")
+frequency_all_processed <- readRDS("frequency_all_processed.rds")
 # get the meth reads and unmeth reads
 meth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,1]))
 unmeth <- as.data.frame( lapply(frequency_all_processed,function(df) df[,2]))
@@ -2891,7 +2925,7 @@ test_real <- sample((num_controlcell+1):(num_controlcell+num_testcell),10)
 test_index <- c(test_real, test_fake)
 
 
-expression_logTPM <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
+expression_logTPM <- readRDS("expression_TPM.rds")
 expression_logTPM <- log2(expression_logTPM+1)
 index <- c(setdiff(1:num_controlcell,test_fake),(num_controlcell+1):(num_controlcell+num_testcell),test_fake)
 expression_logTPM <- expression_logTPM[,index]
@@ -2929,7 +2963,7 @@ control_index <- lapply(similarity_index,function(df) df[1:num_cell_control])
 
 
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+path <-  paste0("path",num_cell_control,"sim")
 setwd(path )
 saveRDS(control_index,"control_index.rds")
 
@@ -3292,7 +3326,7 @@ save(runtime,file = "runtime.RData")
 rm(list=ls())
 num_cell_control <- 8
 
-path <-  paste0("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/results_ks/res",num_cell_control,"sim")
+path <-  paste0("path",num_cell_control,"sim")
 
 res_DESeq2 <- readRDS(paste0(path,"/res_DESeq2.rds"))
 res_scDART_ <- readRDS(paste0(path,"/res_scDART_.rds"))
@@ -3316,8 +3350,6 @@ for (i in 1: length(res_DESeq2)){
   index_nona3 <- which(!is.na(res_edgeR[[i]][[1]][,4]))
   index_nona [[i]] <- intersect(intersect(index_nona1,index_nona2),index_nona3)
 }
-setwd(path)
-saveRDS(index_nona,"index_nona.rds")
 
 res_SigRM_unbiased_ks <- c()
 res_SigRM_locfit_ks <- c()
@@ -3354,8 +3386,6 @@ ks_list_function <- function (x,index_x,y,index_y){
 
 
 
-
-   index_nona <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/index_nona_all.rds")
   
     res_SigRM_locfit_pvalue <- lapply(res_SigRM_locfit,function(df) df[,5])
     
@@ -3404,12 +3434,13 @@ saveRDS(kstest_data_origin,"kstest_data_origin.rds")
 
 ### real data (random vs sim)
 ```{r,eval=FALSE}
-kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
-kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
-kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
-kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
-kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
-kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+#read the above data
+kstest_data_random_2 <- readRDS("/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("/res8/kstest_data_origin.rds")
+kstest_data_sim_2 <- readRDS("/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("/res8sim/kstest_data_origin.rds")
 
 kstest_data_combine <- rbind(kstest_data_sim_2[1:100,],kstest_data_random_2[301:600,],kstest_data_sim_4[1:100,],kstest_data_random_4[301:600,],kstest_data_sim_8[1:100,],kstest_data_random_8[301:600,])
 
@@ -3447,9 +3478,9 @@ plot_real_ran_sim
 
 
 
-kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
-kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
-kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
+kstest_data_random_2 <- readRDS("/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("/res8/kstest_data_origin.rds")
 
 kstest_data_random <- rbind(kstest_data_random_2,kstest_data_random_4,kstest_data_random_8)
 
@@ -3457,9 +3488,9 @@ kstest_data_random$num <- c(rep(2,600),rep(4,600),rep(8,600))
 kstest_data_random$num <-as.factor(kstest_data_random$num)
 
 
-kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
-kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
-kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+kstest_data_sim_2 <- readRDS("/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("/res8sim/kstest_data_origin.rds")
 
 
 
@@ -3514,9 +3545,9 @@ plot_compare_ran_sim_SigRM
 ### compare random and sim in  other methods
 ```{r,eval=FALSE}
 
-kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
-kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
-kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
+kstest_data_random_2 <- readRDS("/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("/res8/kstest_data_origin.rds")
 
 kstest_data_random <- rbind(kstest_data_random_2,kstest_data_random_4,kstest_data_random_8)
 
@@ -3524,9 +3555,9 @@ kstest_data_random$num <- c(rep(2,600),rep(4,600),rep(8,600))
 kstest_data_random$num <-as.factor(kstest_data_random$num)
 
 
-kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
-kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
-kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+kstest_data_sim_2 <- readRDS("/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("/res8sim/kstest_data_origin.rds")
 
 
 
@@ -3584,12 +3615,12 @@ plot_app4
 ### real data (sim vs sim)
 ```{r,eval=FALSE}
 
-kstest_data_random_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2/kstest_data_origin.rds")
-kstest_data_random_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4/kstest_data_origin.rds")
-kstest_data_random_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8/kstest_data_origin.rds")
-kstest_data_sim_2 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res2sim/kstest_data_origin.rds")
-kstest_data_sim_4 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/kstest_data_origin.rds")
-kstest_data_sim_8 <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res8sim/kstest_data_origin.rds")
+kstest_data_random_2 <- readRDS("/res2/kstest_data_origin.rds")
+kstest_data_random_4 <- readRDS("/res4/kstest_data_origin.rds")
+kstest_data_random_8 <- readRDS("/res8/kstest_data_origin.rds")
+kstest_data_sim_2 <- readRDS("/res2sim/kstest_data_origin.rds")
+kstest_data_sim_4 <- readRDS("/res4sim/kstest_data_origin.rds")
+kstest_data_sim_8 <- readRDS("/res8sim/kstest_data_origin.rds")
 
 kstest_data_combine <- rbind(kstest_data_random_2[1:100,],kstest_data_random_2[301:600,],kstest_data_random_4[1:100,],kstest_data_random_4[301:600,],kstest_data_random_8[1:100,],kstest_data_random_8[301:600,],kstest_data_sim_2[1:100,],kstest_data_sim_2[301:600,],kstest_data_sim_4[1:100,],kstest_data_sim_4[301:600,],kstest_data_sim_8[1:100,],kstest_data_sim_8[301:600,])
 
@@ -3622,7 +3653,7 @@ plot_app5
 ```{r,eval=FALSE}
 
 
-res_SigRM_locfit <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res4sim/res_SigRM_locfit.rds")
+res_SigRM_locfit <- readRDS("/res4sim/res_SigRM_locfit.rds")
 res <- rbind(res_SigRM_locfit[[1]],res_SigRM_locfit[[2]],res_SigRM_locfit[[3]],res_SigRM_locfit[[4]],res_SigRM_locfit[[5]],
              res_SigRM_locfit[[6]],res_SigRM_locfit[[7]],res_SigRM_locfit[[8]],res_SigRM_locfit[[9]],res_SigRM_locfit[[10]])
 
@@ -3653,8 +3684,8 @@ pairs.panels(my_data_, ellipses=TRUE,scale = FALSE,hist.col = "#00AFBB",
 ```{r,eval=FALSE}
 
 #library(ggplot2)
-original_data <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/expression_TPM.rds")
-original_data <- original_data [,-c(1:391)]
+original_data <- readRDS("expression_TPM.rds")
+original_data <- original_data [,-c(1:391)]# only see test cells
 
 g1_s_genes <- c("CCNE1", "CCNE2","CDC25A","CDC6","E2F1","MCM2","MCM6","NPAT","PCNA","SLBP","SMARCD3","MAX", "ULK4")  # 选基因
 s_genes <- c("BRCA1","RRM1","RRM2", "TYMS","MCM5", "DTL") 
@@ -3795,32 +3826,7 @@ plot_markergene <- ggplot(data_plot_2,aes(x = PC1, y = PC2,color=phase))+
 
 plot_markergene
 
-pca_result_expression <- pca_result
-
-
-
-
-
-
-#library(TSCAN)
-
-input <- exp_log2
-
-#input <- input[which(!is.na(rowSums(input))),]
-
-#input <- t(apply(input,1,function(x) (x-mean(x))/sd(x)))
-#input <- apply(input,2,function(x) (x-mean(x))/sd(x))
-colnames(input) <- colnames(original_data)
-
-lpsmclust <- exprmclust(input ,clusternum = 2:9, reduce = T)
-
-## step6 : pca
-pca_result <- lpsmclust$pcareduceres
-
-data_plot_3 <- lpsmclust
-
-
-plot()
+pca_result_expression <-pca_result
 ```
 
 ## predict use labeled cells
@@ -3848,25 +3854,25 @@ select_gene <- c(g1_s_genes_ENSG$ENSEMBL,s_genes_ENSG$ENSEMBL,g2_m_genes_ENSG$EN
 ## step4 : select sites
 
 
-# get the position of the gene:
-expression <- readRDS("/home/share/haozhe/SIGMR_single_cell/data/SMART_3/origin/gene_expression_73_control.rds")
+# get the position of the gene: 
+expression <- readRDS("gene_informations.rds")
 
 # get the index of the genes
 index <- c()
 for ( i in 1:length(select_gene)){
-  index[i] <-which(expression[[1]]$Gene.ID%in%select_gene[i])
+  index[i] <-which(expression$Gene.ID%in%select_gene[i])
 }
 
 # get the position of the genes
-position_start <- expression[[1]]$Start[index]
-position_end <- expression[[1]]$End[index]
+position_start <- expression$Start[index]
+position_end <- expression$End[index]
 
 
 # get the sites information
-SNP_all_51w <- readRDS("~/SIGMR_single_cell/data/SMART_3/preprocess2/SNP_all_51w.rds")
+SNP_all_processed <- readRDS("/SNP_all_processed.rds")
 
 # the sites position
-testSNP_all_position <- SNP_all_51w@ranges@start
+testSNP_all_position <- SNP_all_processed@ranges@start
 
 # match the site to the gene
 index_list <- list()
@@ -3880,8 +3886,8 @@ for ( i in 1:length(select_gene)){
 index_site <- unlist(index_list)
 site_length <- unlist(lapply(index_list, length))
 
-# load the data
-res_all <- readRDS("~/SIGMR_single_cell/data/SMART_3/results_ks/res_all_4_sim/res_list.rds")
+# load the data  This is the 991 cells with 4 sim cell as control cells
+res_all <- readRDS("/res_all_4_sim/res_list.rds")
 
 
 # get the TCR matrix 
@@ -3938,7 +3944,6 @@ input[is.na(input)] <- 0
 #input <- input[which(!is.na(rowSums(input))),]
 
 #input <- t(apply(input,1,function(x) (x-mean(x))/sd(x)))
-#input <- apply(input,2,function(x) (x-mean(x))/sd(x))
 colnames(input) <- colnames(original_data)
 
 lpsmclust <- exprmclust(input ,clusternum = 4, reduce = T)
@@ -3954,7 +3959,6 @@ g2 <- as.data.frame(g2)
 other <- pca_result[-which(rownames(pca_result)%in%c(g1_labels,S_labels,g2_labels)),1:dim( lpsmclust$pcareduceres)[2]]
 other <- as.data.frame(other)
 
-plot1<- plotmclust(lpsmclust,show_cell_names = F)+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank(),axis.text.x = element_blank())
 
 g1$phase <- "g1"
 s$phase <- "s"
@@ -3962,10 +3966,6 @@ g2$phase <- "g2"
 other$phase <- "other"
 data_plot <- rbind(other,g1,s,g2)
 
-plot2<- ggplot()+
-  #geom_point(data =pca_result,aes(x = PC1,y = PC2),size = 1)+ 
-  geom_point(data=data_plot,aes(x = PC1, y = PC2,color=phase),size=3)+scale_color_manual(values = c("g1" = "#ffd401","s" = "#00b0eb","g2" = "#e20612","other" = "#C0C0C0") )+
-  labs(title = "PCA (Cells)", x = "PC1", y = "PC 2")+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank())#+stat_ellipse(data=data_plot_cluster,  geom = "polygon",level=0.9,     linetype = 1,size=0.5,        aes(x = PC1, y = PC2,fill=cluster),alpha=0.3,      show.legend = T,segments = 20)
 
 
 
@@ -4001,17 +4001,7 @@ colnames(center2) <- c("x","y")
 center3 <- as.data.frame(rbind(center_2,center_4))
 colnames(center3) <- c("x","y")
 
-plot1 <- plot1+xlab("PC1")+ylab("PC2")
-plot2 <- plot2+theme(plot.title =element_blank())
-plot3 <- plot2+stat_ellipse(data=data_plot_cluster,level=0.9,     linetype = 1,size=2,        aes(x = PC1, y = PC2,fill=state),alpha=0.5,segments = 50,geom = "polygon")+annotate("text", label = "1", x = center_1[1], y = center_1[2], size = 6, colour = "black")+annotate("text", label = "2", x = center_2[1], y = center_2[2], size = 6, colour = "black")+annotate("text", label = "3", x = center_3[1], y = center_3[2], size = 6, colour = "black")+annotate("text", label = "4", x = center_4[1], y = center_4[2], size = 6, colour = "black")+geom_line(data=center,aes(x = x, y = y),size=1)+geom_line(data=center2,aes(x = x, y = y),size=1)+geom_line(data=center3,aes(x = x, y = y),size=1)+theme(
-plot.title =element_blank())
 
-plot1
-plot2
-plot3
-
-
-plot_markergene
 
 label_1_data <- pca_result_expression[lpsmclust_1,1:2]
 label_1_data<- as.data.frame(label_1_data)
@@ -4028,19 +4018,75 @@ label_3_data$state <- "3"
 label_4_data$state <- "4"
 data_plot_2 <- rbind(label_4_data,label_1_data,label_2_data,label_3_data)
 
-plot_markergene2 <- ggplot(data_plot_2,aes(x = PC1, y = PC2,color=state))+
-  #geom_point(data =pca_result,aes(x = PC1,y = PC2),size = 1)+ 
-  geom_point()+scale_color_manual(values = c("1" = "#e20612","2" = "#00b0eb","3" = "#ffd401","4"="#C0C0C0") )+
-  labs(title = "PCA (Cells)", x = "PC1", y = "PC 2")+theme_bw()+theme(plot.title = element_text(hjust = 0.5),panel.grid.major.x=element_blank(),panel.grid.minor.x=element_blank(),panel.grid.minor.y=element_blank(),panel.grid.major.y=element_blank())
-#geom_text(data = s, aes(x = PC1, y = PC2, label = rownames(s)), vjust = -0.5, hjust = -0.5, size = 1)
 
-plot_markergene2
+
+
+
+
+
+
+data_plot_1 <- data_plot[,c(1,2,4)]
+
+a <- order(rownames(data_plot_2))
+data_plot_2_new <- data_plot_2[a,]
+data_plot_1 <- data_plot_1[order(rownames(data_plot_1)),]
+
+data_plot_1 <- data_plot_1[which(rownames(data_plot_1)%in%rownames(data_plot_2_new)),]
+data_plot_1$"state" <-data_plot_2_new$state
+data_plot_2_new$"phase" <-data_plot_1$phase
+data_plot_3 <-lpsmclust
+
+data_plot_2<-data_plot_2_new
+
+
+
+
+data_plot <-data_plot_1
+data_plot$explab <-data_plot_3[["clusterid"]][rownames(data_plot)]
+data_plot_2$explab <-data_plot_3[["clusterid"]][rownames(data_plot_2)]
+data_plot$explab <- as.character(data_plot$explab )
+data_plot_2$explab <- as.character(data_plot_2$explab )
+data_plot$explab <- factor(data_plot$explab )
+data_plot_2$explab <- factor(data_plot_2$explab )
+
+
+center_1 <- apply(data_plot[which(data_plot$state=="1"),1:2],2,mean)
+center_2 <- apply(data_plot[which(data_plot$state=="2"),1:2],2,mean)
+center_3 <- apply(data_plot[which(data_plot$state=="3"),1:2],2,mean)
+center_4 <- apply(data_plot[which(data_plot$state=="4"),1:2],2,mean)
+
+center <- as.data.frame(rbind(center_2,center_3))
+colnames(center) <- c("x","y")
+center2 <- as.data.frame(rbind(center_1,center_4))
+colnames(center2) <- c("x","y")
+center3 <- as.data.frame(rbind(center_2,center_4))
+colnames(center3) <- c("x","y")
+
+plot_1 <-  ggplot() +
+    geom_point(data = data_plot, aes(x = PC1, y = -PC2, color = state)) +
+    stat_ellipse(data = data_plot, level = 0.9, linetype = 1, size = 2, 
+                 aes(x = PC1, y = -PC2, fill = state), alpha = 0.3, segments = 50, geom = "polygon",type = "t")  +
+    geom_line(data = center, aes(x = x, y = -y), size = 1) +
+    geom_line(data = center2, aes(x = x, y = -y), size = 1) +
+    geom_line(data = center3, aes(x = x, y = -y), size = 1) +
+    annotate("text", label = "1", x = center_1[1], y = -center_1[2], size = 7, colour = "black") +
+    annotate("text", label = "2", x = center_2[1], y = -center_2[2], size = 7, colour = "black") +
+    annotate("text", label = "3", x = center_3[1], y = -center_3[2], size = 7, colour = "black") +
+    annotate("text", label = "4", x = center_4[1], y = -center_4[2], size = 7, colour = "black") +
+    theme(legend.key.width = unit(0.5, "cm")) +
+    coord_cartesian(xlim = c(-5, +5), ylim = c(-5, 4)) +
+    theme_bw()
+
+
+
+plot_2 <-  ggplot(data_plot, aes(x=PC1,y=-PC2))+   geom_point( aes(color=phase)) +theme_bw()+ theme(legend.key.width = unit(0.5, "cm"))+coord_cartesian(xlim=c(-5,+5),ylim=c(-5,4))+scale_color_manual(values = c("other" = "#C0C0C0","s" = "#F8766D","g2" = "#00BA38","g1" = "#619CFF") )
+
 ```
 
 ## Fisher exact test
 
 ```{r,eval=FALSE}
-data <- readRDS("D:/data/SMART_3/preprocess2/data_plot_case_study1.rds")
+data <- data_plot_2
 data <- data[,3:4]
 colnames(data) <- c("gene expression","methylation level")
 table_gene_methylation <- table(data)

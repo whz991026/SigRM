@@ -18,8 +18,47 @@ devtools::install_github("whz991026/SigRM")
 
 ## data
 
-the data can be access from:
-https://drive.google.com/drive/folders/1D137_357nuVYkxYiwcxH8dNyKsEbYrUv?usp=sharing
+The files associated with this study include:
+
+*SNP File (SNP_all.rds):
+
+Data Details: Stored in RDS format, containing a GRanges object.
+Content: Each entry in the GRanges object represents a specific genomic region corresponding to an m6A modification site detected through scDART-seq.
+seqnames: Factor Rle object containing chromosome or genomic sequence names.
+ranges: IRanges object containing genomic intervals (start and end positions).
+strand: Factor Rle object indicating the strand (directionality) of the genomic region.
+mcols: DataFrame object containing optional metadata columns, such as quality scores, coverage depth, and mutation data.
+seqinfo: Seqinfo object providing information about the genomic sequences present in the GRanges object.
+Purpose: Provides detailed genomic information about identified m6A modification sites, facilitating further analysis of their distribution, characteristics, and genomic context in HEK293T cells.
+
+
+*Frequency File (frequency_all.rds):
+
+Data Details: Also stored in RDS format, consisting of a list.
+Content: Each item in the list represents a single-cell, containing counts of methylated and unmethylated reads for corresponding m6A modification sites detected in scDART-seq data.
+Purpose: Offers quantitative data on the abundance of methylated and unmethylated sequences at each m6A site across individual cells, enabling investigation of m6A modification patterns at a single-cell level.
+
+
+*Expression TPM File (expression_TPM.rds):
+
+Data Details: Stored as an RDS file, comprising a list.
+Content: Each item in the list represents a single-cell, with corresponding TPM values for gene expression.
+Purpose: Provides information on gene expression levels across individual cells, facilitating examination of potential correlations between m6A modification patterns and gene expression profiles in scDART-seq data from HEK293T cells.
+
+*Gene Information File (gene_informations.rds):
+
+Data Details: Stored as an RDS file, comprising a data frame.
+Content: Includes information such as Gene ID, Gene Name, Reference, Strand, Start position, End position, and Coverage.
+Purpose: Offers additional details about gene expression data, aiding in the interpretation and analysis of gene expression profiles in conjunction with m6A modification patterns.
+
+
+
+
+All three files can access on: https://figshare.com/articles/dataset/The_scDART-seq_data_used_in_the_b_Statistical_modeling_of_single-cell_epitranscriptomics_enabled_trajectory_and_regulatory_inference_of_RNA_methylation_b_/25815862
+
+with DOI: 10.6084/m9.figshare.25815862
+
+
 
 ## Example
 
