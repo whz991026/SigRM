@@ -54,7 +54,7 @@ Purpose: Offers additional details about gene expression data, aiding in the int
 
 
 
-All three files can access on: https://figshare.com/articles/dataset/The_scDART-seq_data_used_in_the_b_Statistical_modeling_of_single-cell_epitranscriptomics_enabled_trajectory_and_regulatory_inference_of_RNA_methylation_b_/25815862
+All three files can access on: https://doi.org/10.6084/m9.figshare.25815862
 
 with DOI: 10.6084/m9.figshare.25815862
 

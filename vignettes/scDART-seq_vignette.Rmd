@@ -28,8 +28,7 @@ knitr::opts_chunk$set(
 
 
 # the data can be access from:
-https://drive.google.com/drive/folders/1D137_357nuVYkxYiwcxH8dNyKsEbYrUv?usp=sharing
-SNP is the information of the 510,554 sites. frequency_all_processed contains the methylationreads counts and unmethylation reads counts for 510,554 sites and 1382 cells (YTH is the test cell, YTHmut is the control cells). expression_TPM is the TPM of the 1382 cells.
+https://doi.org/10.6084/m9.figshare.25815862
 
 # Extraction of m6A signals from scDART-seq data 
 The raw data was directly downloaded from GEO and aligned to hg38 reference genome using hisat2. The candidate m6A sites (corresponding to mutated C within the DRACH motifs) were detected using Samtools (default setting). The m6A and non-modification signals (number of mutated and unmutated sequences with respect to each candidate sites) were counted using GenomicAlignments R package. The Information of a total of 2371331 sites was extracted for 1382 cells, including 991 testing cells and 391 negative control which has mutated YTH domain. 
@@ -460,7 +459,7 @@ Purpose: Offers additional details about gene expression data, aiding in the int
 
 
 
-All three files can access on: https://figshare.com/articles/dataset/The_scDART-seq_data_used_in_the_b_Statistical_modeling_of_single-cell_epitranscriptomics_enabled_trajectory_and_regulatory_inference_of_RNA_methylation_b_/25815862
+All three files can access on: https://doi.org/10.6084/m9.figshare.25815862
 
 with DOI: 10.6084/m9.figshare.25815862
 
