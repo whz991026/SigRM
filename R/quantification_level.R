@@ -61,6 +61,9 @@ quantification_level <- function(meth_control,meth_test,unmeth_control,unmeth_te
   unmeth<-cbind(unmeth_control,unmeth_test)
   if(anyNA(size.factor)){
     s <-sizeFactor(cbind((meth_control+unmeth_control),(meth_test+unmeth_test)))
+    if(anyNA(s)){
+        s <-sizeFactor(cbind((meth_control+unmeth_control),(meth_test+unmeth_test)),TRUE)
+      }
     s_control <- s[1:length(meth_control[1,])]
     s_test <- s[(length(meth_control[1,])+1):(length(cbind(meth_control,meth_test)[1,]))]
   }else{
