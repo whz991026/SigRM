@@ -857,53 +857,6 @@ TPR_metric$shape2 <- as.factor(TPR_metric$shape2)
 ```
 
 
-### Visualization the results
-Visualizing the results of the comparison of performance: AUC, FDR, and TPR.
-
-The single_test_10x() and single_test_SMART() functions can only determine whether a site is m6A or not, resulting in a binary output matrix or data frame. In contrast, the SigRM output is a p-value matrix or data frame. To ensure fairness, we set the threshold to detect the same number of m6A sites as single_test_10x() or single_test_SMART(), allowing for a direct performance comparison between SigRM and these methods.
-
-Show the FDR:
-```{r,warning=FALSE}
-
-FDR_metric <- rbind(FDR_metric_1,FDR_metric_2,FDR_metric_3,FDR_metric_4,FDR_metric_5,FDR_metric_6)
-
-FDR_metric$shape2 <- as.factor(FDR_metric$shape2)
-
-
-
-index_10x <- which(grepl("10x",FDR_metric[,2]))
-index_DESeq2 <- which(grepl("DESeq2",FDR_metric[,2]))
-index_edgeR <- which(grepl("edgeR",FDR_metric[,2]))
-index_SigRM <- which(grepl("SigRM",FDR_metric[,2]))
-index_single <- which(grepl("single",FDR_metric[,2]))
-
-FDR_metric[index_single,2] <- "Bullseye"
-FDR_metric[index_edgeR,2] <- "edgeR"
-FDR_metric[index_DESeq2,2] <- "DESeq2"
-FDR_metric[index_SigRM,2] <- "SigRM"
-
-FDR_metric$platform <- 0
-FDR_metric$platform <- 0
-FDR_metric[index_10x,4] <- "10x Genomics"
-FDR_metric[-index_10x,4] <- "SMART-seq2"
-
-
-plot_sim_1 <- ggplot(FDR_metric, aes( y=FDR,color=shape2,x=Method)) +
-  geom_violin(width = 1, scale = "width", size = 0.2) +
-  geom_boxplot(width = 0.6, position = position_dodge(1),       
-               outlier.shape = NA, cex = 0.4)+facet_wrap(vars(platform), scales = "free")
-
-
-
-
-plot_sim_2 <- ggplot(FDR_metric, aes( y=FDR,color=Method,x=shape2)) +
-  geom_violin(width = 0.9, scale = "width", size = 0.2) +
-  geom_boxplot(width = 0.6, position = position_dodge(0.9),         
-               outlier.shape = NA, cex = 0.4)+facet_wrap(vars(platform), scales = "free")+labs("Method")+xlab(TeX("Variance Level ($\\beta$)"))
-
-plot_sim_1
-plot_sim_2
-```
 # Cluster 
 We aim to apply a clustering method in which cells with similar gene expression are grouped together. For the test cells, this method not only employs all control cells but also selects control cells with similar gene expression as the control group. We utilize the Seurat clustering method.
 
@@ -941,8 +894,8 @@ pbmc <- CreateSeuratObject(counts = log2(data_+1), project = "scDART")
 
 
 all.genes <- rownames(pbmc)
+pbmc <- NormalizeData(pbmc, features = all.genes)
 pbmc <- ScaleData(pbmc, features = all.genes)
-
 
 pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
 
