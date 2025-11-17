@@ -103,3 +103,7 @@ head(res[[6]])
 # adjusted p value data frame for the test cells
 head(res[[7]])
 ```
+
+## cite
+
+https://www.cell.com/cell-genomics/fulltext/S2666-979X(24)00331-8
